@@ -1,4 +1,3 @@
-import sys
 from pxr import Usd, UsdGeom, UsdPhysics, Gf, Sdf
 import omni.kit.commands
 from isaacsim.asset.importer.urdf import _urdf

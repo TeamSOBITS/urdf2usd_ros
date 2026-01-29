@@ -1,6 +1,6 @@
 import omni.graph.core as og
 from isaacsim.core.utils.extensions import enable_extension
-from pxr import Usd, UsdGeom, UsdPhysics, Gf, Sdf
+from pxr import Usd, UsdPhysics, Sdf
 
 # Enable Extensions
 enable_extension("isaacsim.core.nodes")

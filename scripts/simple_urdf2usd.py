@@ -10,10 +10,8 @@ try:
     simulation_app = SimulationApp({"renderer": "RayTracedLighting", "headless": True})
 
     # Import necessary Isaac Sim modules
-    import omni.isaac.core.utils.stage as stage_utils
     import omni.usd
     import omni.kit.commands
-    from pxr import Usd
 except ImportError:
     print("Error: This script must be run within the Isaac Sim Python environment.")
     sys.exit(1)
@@ -60,18 +58,19 @@ def main():
     if prim_path:
         # Open the stage via Omni Context
         omni.usd.get_context().open_stage(os.path.abspath(usd_path))
+
         # Get the stage object from the context
         stage = omni.usd.get_context().get_stage()
-        
+
         # Apply Settings
         apply_drive_settings(stage, prim_path, config_data)
         apply_sensor_settings(stage, prim_path, config_data)
         create_ros2_bridge(stage, prim_path, config_data)
-        
+
         # Save 
         omni.usd.get_context().save_stage()
         omni.usd.get_context().close_stage()
-        
+
         print(f"SUCCESS: Robot exported to {usd_path}")
     else:
         print("FAILURE: URDF Import command returned failure.")
