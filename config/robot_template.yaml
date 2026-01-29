@@ -1,0 +1,130 @@
+files_path:
+  urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE.urdf
+  usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE.usd
+
+# Default Physics Drive settings
+default_drive:
+  stiffness: 10000.0 # High stiffness = Position Control
+  damping: 100.0
+
+# Joint Configuration
+joints:
+  # WHEELS: Set stiffness to 0.0 for Velocity Control
+  wheel_left_joint:
+    stiffness: 0.0
+    damping: 10000.0
+  wheel_right_joint:
+    stiffness: 0.0
+    damping: 10000.0
+  
+  # ARM/HAND/HEAD: Set damping and stiffness for Position Control
+  arm_joint_1:
+    stiffness: 8000.0
+    damping: 500.0
+  arm_joint_2:
+    stiffness: 8000.0
+    damping: 500.0
+  arm_joint_3:
+    stiffness: 8000.0
+    damping: 500.0
+  hand_joint:
+    stiffness: 8000.0
+    damping: 500.0
+
+# Sensor Configuration ("camera", "lidar", "imu" supported)
+sensors:
+  # RGB-D Camera (Single prim handles RGB, Depth, PointCloud)
+  camera:
+    type: "camera"
+    parent_link: "camera_link"
+    horizontal_aperture: 20.955
+    vertical_aperture: 15.2908
+    focal_length: 1.93
+    clipping_range: [0.01, 100.0]
+    rotation: [180, 0, 0]
+    visible: false
+    rgb:
+      enabled: true
+      enable_semantic_labels: false
+      frame_skip: 0
+      reset_sim_time_on_stop: false
+      topic: "camera/color"
+    depth:
+      enabled: true
+      enable_semantic_labels: false
+      frame_skip: 0
+      reset_sim_time_on_stop: false
+      topic: "camera/depth"
+    pcl:
+      enabled: true
+      enable_semantic_labels: false
+      frame_skip: 0
+      reset_sim_time_on_stop: false
+      topic: "camera/depth/points"
+  
+  # 2D/3D Lidar
+  lidar:
+    type: "lidar"
+    parent_link: "laser_frame"
+    implementation: "physx" # Options: 'physx' or 'rtx'
+    profile: "Example_Rotary" # For RTX Lidar: "Example_Rotary", "Generic", "Ouster_OS1_128"
+    min_range: 0.1
+    max_range: 10.0
+    horizontal_fov: 360.0
+    horizontal_resolution: 0.01 # Degrees between points
+    vertical_fov: 1.0 # Set >1.0 for 3D Lidar
+    vertical_resolution: 1.0 # Set <1.0 for 3D Lidar
+    rotation_rate: 20.0 # Hz
+    draw_points: false
+    draw_lines: false
+    high_lod: false # Use high level of detail for visualization (3D Lidar only)
+    topic: "lidar/scan"
+
+  # IMU
+  imu_sensor:
+    type: "imu"
+    parent_link: "imu_link"
+    read_gravity: true
+    use_latest_data: false
+    publish_angular_velocity: true
+    publish_linear_acceleration: true
+    publish_orientation: true
+    update_rate: 10.0 # Hz
+    topic: "imu"
+
+
+ros2:
+  enabled: true
+  domain_id: 0 # ROS_DOMAIN_ID
+  namespace: ""
+
+  # GLOBAL PUBLISHERS
+  publish_tf: true
+  publish_joint_states: true
+  topic_joint_states: "joint_states"
+
+  # MOBILE BASE (Navigation)
+  mobile_base:
+    enabled: true
+    topic_cmd_vel: "cmd_vel"
+    topic_odom: "odom"
+    frame_odom: "odom"
+    frame_base: "base_footprint"
+    wheel_joints: ["wheel_left_joint", "wheel_right_joint"]
+    wheel_radius: 0.045
+    wheel_base: 0.20 # Distance between wheels
+
+  # JOINT CONTROLLERS
+  controllers:
+    arm_controller:
+      topic: "arm_position_controller"
+      type: "position" # 'position' or 'velocity'
+      joints: 
+        - "arm_joint_1"
+        - "arm_joint_2"
+        - "arm_joint_3"
+    hand_controller:
+      topic: "hand_position_controller"
+      type: "position"
+      joints:
+        - "hand_joint"
