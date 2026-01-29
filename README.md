@@ -1,4 +1,12 @@
+<a name="readme-top"></a>
+
 [EN](README.md) | [JA](README_ja.md)
+
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![License][license-shield]][license-url]
 
 # URDF2USD with ROS Bridge
 
