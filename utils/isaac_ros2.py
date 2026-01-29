@@ -122,6 +122,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("ArtControllerBase", "isaacsim.core.nodes.IsaacArticulationController"),
                     ("ComputeOdom", "isaacsim.core.nodes.IsaacComputeOdometry"),
                     ("PubOdom", "isaacsim.ros2.bridge.ROS2PublishOdometry"),
+                    ("PubOdomTf", "isaacsim.ros2.bridge.ROS2PublishRawTransformTree"),
                 ],
                 keys.SET_VALUES: [
                     ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
@@ -151,6 +152,11 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("PubOdom.inputs:topicName", mb_config.get("topic_odom", "odom")),
                     ("PubOdom.inputs:chassisFrameId", mb_config.get("frame_base", "base_footprint")),
                     ("PubOdom.inputs:odomFrameId", mb_config.get("frame_odom", "odom")),
+
+                    # Odometry TF Publisher
+                    ("PubOdomTf.inputs:childFrameId", mb_config.get("frame_base", "base_footprint")),
+                    ("PubOdomTf.inputs:parentFrameId", mb_config.get("frame_odom", "odom")),
+                    ("PubOdomTf.inputs:topicName", "tf"),
                 ],
                 keys.CONNECT: [
                     # Execution
@@ -158,6 +164,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("OnTick.outputs:tick", "ArtControllerBase.inputs:execIn"),
                     ("OnTick.outputs:tick", "ComputeOdom.inputs:execIn"),
                     ("OnTick.outputs:tick", "PubOdom.inputs:execIn"),
+                    ("OnTick.outputs:tick", "PubOdomTf.inputs:execIn"),
 
                     # Cmd_vel Logic
                     ("ReadContext.outputs:context", "SubTwist.inputs:context"),
@@ -175,6 +182,13 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("ComputeOdom.outputs:orientation", "PubOdom.inputs:orientation"),
                     ("ComputeOdom.outputs:linearVelocity", "PubOdom.inputs:linearVelocity"),
                     ("ComputeOdom.outputs:angularVelocity", "PubOdom.inputs:angularVelocity"),
+
+                    # Odometry TF Logic
+                    ("ReadContext.outputs:context", "PubOdomTf.inputs:context"),
+                    ("SimTime.outputs:simulationTime", "PubOdomTf.inputs:timeStamp"),
+                    ("ComputeOdom.outputs:position", "PubOdomTf.inputs:translation"),
+                    ("ComputeOdom.outputs:orientation", "PubOdomTf.inputs:rotation"),
+
                 ]
             }
         )
