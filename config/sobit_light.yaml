@@ -1,6 +1,6 @@
 files_path:
-  urdf: /ABSOLUTE/PATH/TO/URDF/FILE.urdf
-  usd: /ABSOLUTE/PATH/TO/USD/FILE.usd
+  urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE/sobit_light.urdf
+  usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE/sobit_light.usd
 
 # Default Physics Drive settings
 default_drive:
@@ -52,7 +52,7 @@ joints:
 # Sensor Configuration
 sensors:
   # RGB-D Camera (Single prim handles RGB, Depth, PointCloud)
-  head_camera_color:
+  head_camera:
     type: "camera"
     parent_link: "head_camera_color_optical_frame"
     horizontal_aperture: 20.955
