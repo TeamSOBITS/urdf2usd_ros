@@ -23,7 +23,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir))
 
 from utils.isaac_wrappers import import_urdf, apply_drive_settings, apply_sensor_settings
-from utils.ros2_graph import create_ros2_bridge
+from simple_urdf2usd.utils.isaac_ros2 import create_ros2_bridge
 
 def main():
     parser = argparse.ArgumentParser(description="Convert ROS URDF to Isaac Sim USD with Physics/Sensor configuration.")
