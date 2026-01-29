@@ -1,7 +1,6 @@
 files_path:
-  urdf: /home/su-keith/docker_containers/humble_sobit_light_ws/src/sobit_light/sobit_light_description/robots/sobit_light_robot.urdf
-  usd: /home/su-keith/docker_containers/humble_sobit_light_ws/src/sobit_light/sobit_light_description/robots/sobit_light_robot.usd
-  config: /home/su-keith/docker_containers/humble_sobit_light_ws/src/simple_urdf2usd/config/sobit_light.yaml
+  urdf: /ABSOLUTE/PATH/TO/URDF/FILE.urdf
+  usd: /ABSOLUTE/PATH/TO/USD/FILE.usd
 
 # Default Physics Drive settings
 default_drive:
