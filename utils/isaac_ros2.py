@@ -165,6 +165,8 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("OnTick.outputs:tick", "ComputeOdom.inputs:execIn"),
                     ("OnTick.outputs:tick", "PubOdom.inputs:execIn"),
                     ("OnTick.outputs:tick", "PubOdomTf.inputs:execIn"),
+                    ("OnTick.outputs:tick", "DiffController.inputs:execIn"),
+                    ("OnTick.outputs:deltaSeconds", "DiffController.inputs:dt"),
 
                     # Cmd_vel Logic
                     ("ReadContext.outputs:context", "SubTwist.inputs:context"),
