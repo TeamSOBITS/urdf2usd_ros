@@ -2,6 +2,10 @@ files_path:
   urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE.urdf
   usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE.usd
 
+# Resolves package:// in the URDF (needed on Isaac Sim 6.x when ROS is not sourced)
+ros_package_paths: {}
+# my_description: /ABSOLUTE/PATH/TO/my_description
+
 # Default Physics Drive settings
 default_drive:
   stiffness: 10000.0 # High stiffness = Position Control

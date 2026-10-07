@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+os.environ.setdefault("OMNI_KIT_ACCEPT_EULA", "yes")
 import yaml
 
 # Check if running in Isaac Sim context
@@ -53,6 +54,7 @@ def main():
     prim_path = import_urdf(
         urdf_path=os.path.abspath(urdf_path),
         usd_path=os.path.abspath(usd_path),
+        config_data=config_data,
     )
 
     if prim_path:
