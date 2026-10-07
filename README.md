@@ -165,7 +165,8 @@ It prints a PASS/FAIL table and exits non-zero on failure.
 
 ### Known robot-side issues
 
-- **SOBIT HOME `plate_cover_joint`:** its parent is `base_footprint` (a massless frame), so `plate_cover_link` (1.5 kg) becomes a second articulation root pinned to the world while the robot moves (in a 120-frame headless run the cover stayed at z=0.496 while the base rose from 0.309 to 0.413). Fix in `sobit_home_description`: re-parent `plate_cover_joint` to `base_link`.
+- **SOBIT HOME `plate_cover_joint`:** its parent is `base_footprint` (a massless frame), so `plate_cover_link` (1.5 kg) becomes a second articulation root pinned to the world while the robot moves (in a 120-frame headless run the cover stayed at z=0.496 while the base rose from 0.309 to 0.413). Fix in `sobit_home_description`: re-parent `plate_cover_joint` to `plate_middle_link` with `xyz="0 0 0.2249"` (0.496258 − 0.271358); re-parenting to `base_link` does not help because `base_link` has no inertial.
+- **Massless frames in TF:** `base_footprint`, `base_link` and `lidar_merged_laser` are not part of the articulation, so the generated TF graph does not publish them. Run `robot_state_publisher` alongside (as the ROS stack normally does) or add static transforms.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

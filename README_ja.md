@@ -165,7 +165,8 @@ PASS/FAILの表を表示し，失敗があれば非ゼロで終了します．
 
 ### ロボット側の既知の問題
 
-- **SOBIT HOMEの`plate_cover_joint`:** 親が質量のない`base_footprint`のため，`plate_cover_link`（1.5 kg）が2つ目のアーティキュレーションルートとなり，ワールドに固定されます（120フレームのheadless実行で，カバーはz=0.496のままベースは0.309から0.413へ移動）．`sobit_home_description`側で`plate_cover_joint`の親を`base_link`に変更してください．
+- **SOBIT HOMEの`plate_cover_joint`:** 親が質量のない`base_footprint`のため，`plate_cover_link`（1.5 kg）が2つ目のアーティキュレーションルートとなり，ワールドに固定されます（120フレームのheadless実行で，カバーはz=0.496のままベースは0.309から0.413へ移動）．`sobit_home_description`側で`plate_cover_joint`の親を`plate_middle_link`に変更し，`xyz="0 0 0.2249"`（0.496258 − 0.271358）としてください．`base_link`にはinertialがないため，`base_link`への変更では解決しません．
+- **TFに含まれない質量のないフレーム:** `base_footprint`，`base_link`，`lidar_merged_laser`はアーティキュレーションに含まれないため，生成されたTFグラフはこれらを配信しません．`robot_state_publisher`を併用する（ROSの通常構成）か，静的変換を追加してください．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
