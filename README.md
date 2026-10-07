@@ -15,7 +15,7 @@
 
 A generalized tool designed to convert ROS 2 Mobile Manipulator URDFs into NVIDIA Isaac Sim USD files, complete with correctly configured Physics Drives and Sensors.
 
-Compatible with **Isaac Sim 5.0+**.
+Compatible with **Isaac Sim 5.0 to 6.1** (see the [compatibility table](#compatibility)).
 
 **Main Features:**
 - **One-Command Conversion:** Seamlessly convert URDF to USD.
@@ -43,11 +43,29 @@ Ensure your environment meets the following requirements before proceeding with 
 | Ubuntu    | 22.04 / 24.04           |
 | ROS       | Any ROS 2 Distribution  |
 | Python    | 3.12                    |
-| Isaac Sim | 5.0.0+                  |
+| Isaac Sim | 5.0.0 - 6.1.0           |
 
 
 > [!NOTE]
 > If you need to install `Ubuntu` or `ROS`, please refer to our [SOBITS Manual](https://github.com/TeamSOBITS/sobits_manual#%E9%96%8B%E7%99%BA%E7%92%B0%E5%A2%83%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<a name="compatibility"></a>
+### Compatibility
+
+| Isaac Sim | Python | URDF importer                    | Lidar default | Status                      |
+| :-------- | :----- | :------------------------------- | :------------ | :-------------------------- |
+| 5.0       | 3.11   | `URDFParseAndImportFile` (legacy) | PhysX         | untested here               |
+| 5.1       | 3.11   | `URDFParseAndImportFile` (legacy) | PhysX         | untested here               |
+| 6.0       | 3.12   | `URDFImporter` (`urdf-usd-converter`) | RTX       | tested                      |
+| 6.1       | 3.12   | `URDFImporter` (`urdf-usd-converter`) | RTX       | tested                      |
+
+The backend is chosen automatically from the installed `isaacsim` version ([isaac_version.py](utils/isaac_version.py)).
+
+> [!IMPORTANT]
+> On Isaac Sim 6.x the PhysX lidar no longer exists. `implementation: "physx"` falls back to `rtx` with a warning, and `rtx` is now the default there. On 5.x the default stays `physx`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -74,7 +92,7 @@ Ensure your environment meets the following requirements before proceeding with 
    $ ros2 run xacro xacro -o output.urdf input.urdf.xacro
    ```
 > [!TIP]
-> Isaac Sim may sometimes fail to import mesh files if it cannot locate the ROS package. In such cases, replacing package paths (`package://`) with absolute file paths in your URDF is recommended.
+> Isaac Sim may sometimes fail to import mesh files if it cannot locate the ROS package. Map each package to its directory with the `ros_package_paths` key of your YAML (works on 5.x and 6.x, see below). If ROS is sourced, 6.x resolves packages through `ament_index` automatically. Replacing `package://` with absolute paths in the URDF also works.
 
 > [!WARNING]
 > Ensure all joint/link names and mesh filenames strictly follow the [Isaac Sim naming conventions](https://docs.omniverse.nvidia.com/usd/code-docs/usd-exchange-sdk/latest/api/group__names.html#group__names_1autotoc_md9) (e.g., avoid hyphens `-`). Failing to do so may cause the conversion to fail.
@@ -83,6 +101,13 @@ Ensure your environment meets the following requirements before proceeding with 
 2. **Configure the Robot:** Copy the template file [robot_template.yaml](config/robot_template.yaml) and modify it to match your robot's joint names and sensor links.
 > [!NOTE]
 > The new YAML configuration file must be placed inside the [config](config) folder, and its filename must not contain spaces.
+
+   `ros_package_paths` maps package names to absolute directories and is used to resolve `package://` URLs:
+   ```yaml
+   ros_package_paths:
+     sobit_home_description: /path/to/sobit_home_description
+   ```
+   On 5.x the URDF is copied with `package://` rewritten (the copy is deleted afterwards); on 6.x the mapping is passed to the importer as `ros_package_paths`.
 
 3. **Verify Environment:** Ensure your Isaac Sim Python environment is active. (This step is automatic if you followed the Conda installation method).
 
@@ -99,6 +124,12 @@ Ensure your environment meets the following requirements before proceeding with 
    ```
 
 6. **Result:** The fully configured USD file will be generated in the output directory specified within your YAML file.
+
+> [!NOTE]
+> **Isaac Sim 6.x output layout.** The 6.x importer writes a directory (`<name>/<robot>.usda`, `payloads/`, `Textures/`) instead of a single file. `files_path.usd` is still the file you ask for: the package is moved to `<usd stem>/` next to it and `<name>.usd` is a thin wrapper that references the package, selects the `physx` variant of the `Physics` variant set and holds the sensors and OmniGraphs. Keep the wrapper and the package directory together. If `files_path.usd` is a directory, the importer's main `.usda` is used directly.
+
+> [!NOTE]
+> **ROS 2 libraries.** If no ROS 2 is sourced, the script re-executes itself with the ROS 2 Jazzy libraries bundled in Isaac Sim 6.x (`ROS_DISTRO=jazzy`, `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, `LD_LIBRARY_PATH` extended with `isaacsim.ros2.core/jazzy/lib`). `OMNI_KIT_ACCEPT_EULA=yes` is set if undefined. When loading a stage yourself, enable the ROS 2 extensions and run a few `app.update()` calls *before* opening the stage; opening it right after enabling them crashed `omni.graph.core` on 6.1.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -120,16 +151,30 @@ Before running complex simulations, it is good practice to visualize and test th
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
+### Test
+
+Convert a robot and check the result (articulation, DOF count, drive gains, sensors, OmniGraph node types, 120 physics frames, ROS 2 context). Run it with the Isaac Sim Python environment:
+```sh
+$ python3 tests/convert_and_check.py --robot sobit_home
+# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot sobit_home
+```
+It prints a PASS/FAIL table and exits non-zero on failure.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
 <!-- MILESTONE -->
 ## Milestone
 
 - [ ] Support multiple mobile base controllers
+- [ ] Swerve drive base (`sobit_home.yaml` keeps `mobile_base` disabled; the differential controller graph does not apply) (TODO `swerve`)
 - [ ] Minimize YAML file parameters (auto-detect from URDF)
 - [ ] Publish TF Static topic
 - [ ] Support for custom QoS settings
 - [ ] Support for TF namespaces
 - [x] Support Differential Drive Controller
 - [x] Integrate ROS 2 Bridge automatically
+- [x] Support Isaac Sim 6.0 / 6.1
 
 See the [open issues][issues-url] for a full list of proposed features (and known issues).
 

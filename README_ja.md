@@ -15,7 +15,7 @@
 
 ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定（Physics Drives）やセンサー設定を含んだ状態で，NVIDIA Isaac Sim用のUSDファイルへ変換する汎用ツールです．
 
-**Isaac Sim 5.0以降** に対応しています.
+**Isaac Sim 5.0〜6.1** に対応しています（[互換性表](#compatibility)を参照）．
 
 **主な機能:**
 - **ワンコマンド変換:** URDFからUSDへの変換を1行のコマンドで実行可能．
@@ -43,11 +43,29 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 | Ubuntu    | 22.04 / 24.04           |
 | ROS       | 任意のROS 2ディストリビューション |
 | Python    | 3.12                    |
-| Isaac Sim | 5.0.0+                  |
+| Isaac Sim | 5.0.0 - 6.1.0           |
 
 
 > [!NOTE]
 > `Ubuntu`や`ROS`のインストール方法に関しては，[SOBITS Manual](https://github.com/TeamSOBITS/sobits_manual#%E9%96%8B%E7%99%BA%E7%92%B0%E5%A2%83%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6)に参照してください．
+
+<p align="right">(<a href="#readme-top">上に戻る</a>)</p>
+
+
+<a name="compatibility"></a>
+### 互換性
+
+| Isaac Sim | Python | URDFインポータ                    | LiDARの既定値 | 状態               |
+| :-------- | :----- | :------------------------------- | :------------ | :----------------- |
+| 5.0       | 3.11   | `URDFParseAndImportFile`（従来）   | PhysX         | 本環境では未検証     |
+| 5.1       | 3.11   | `URDFParseAndImportFile`（従来）   | PhysX         | 本環境では未検証     |
+| 6.0       | 3.12   | `URDFImporter`（`urdf-usd-converter`） | RTX      | 検証済み            |
+| 6.1       | 3.12   | `URDFImporter`（`urdf-usd-converter`） | RTX      | 検証済み            |
+
+インストールされている`isaacsim`のバージョンから，バックエンドが自動で選択されます（[isaac_version.py](utils/isaac_version.py)）．
+
+> [!IMPORTANT]
+> Isaac Sim 6.xではPhysX LiDARが廃止されました．`implementation: "physx"`を指定すると警告を出して`rtx`に切り替わり，6.xでは`rtx`が既定値になります．5.xの既定値は`physx`のままです．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -74,7 +92,7 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
    $ ros2 run xacro xacro -o output.urdf input.urdf.xacro
    ```
 > [!TIP]
-> Isaac SimがROSパッケージの場所を特定できず，メッシュファイルのインポートに失敗することがあります．その場合，URDF内のファイルパス（`package://`）を絶対パスに書き換えることを推奨します．
+> Isaac SimがROSパッケージの場所を特定できず，メッシュファイルのインポートに失敗することがあります．その場合，YAMLの`ros_package_paths`でパッケージ名とディレクトリを対応付けてください（5.x・6.xの両方で有効，後述）．ROSがsourceされていれば，6.xは`ament_index`から自動で解決します．URDF内の`package://`を絶対パスに書き換える方法も使えます．
 
 > [!WARNING]
 > すべてのジョイント名，リンク名，およびメッシュファイル名は，[Isaac Simの命名規則（英語）](https://docs.omniverse.nvidia.com/usd/code-docs/usd-exchange-sdk/latest/api/group__names.html#group__names_1autotoc_md9) に厳密に従う必要があります（例：ハイフン `-` の使用は避ける）．これに従わない場合，変換に失敗する可能性があります．
@@ -83,6 +101,13 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 2. **ロボットの設定:** テンプレートファイル [robot_template.yaml](config/robot_template.yaml) をコピーし，対象ロボットのジョイント名やセンサーリンクに合わせて内容を編集してください．
 > [!NOTE]
 > 新しいYAML設定ファイルは [config](config) フォルダ内に配置し，ファイル名にはスペースを含めないでください．
+
+   `ros_package_paths`は，`package://`を解決するためのパッケージ名と絶対パスの対応表です．
+   ```yaml
+   ros_package_paths:
+     sobit_home_description: /path/to/sobit_home_description
+   ```
+   5.xでは`package://`を書き換えたURDFの一時コピーを使用し（変換後に削除），6.xではインポータの`ros_package_paths`に渡されます．
 
 3. **環境の確認:** Isaac SimのPython環境が有効になっていることを確認してください（Condaを使用したインストール方法に従った場合，この手順は自動的に行われます）．
 
@@ -99,6 +124,12 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
    ```
 
 6. **結果:** 設定済みのUSDファイルが，YAMLファイル内で指定した出力ディレクトリに生成されます．
+
+> [!NOTE]
+> **Isaac Sim 6.xの出力構成:** 6.xのインポータは単一ファイルではなくディレクトリ（`<name>/<robot>.usda`，`payloads/`，`Textures/`）を出力します．`files_path.usd`は従来どおり指定したファイルとして生成され，パッケージはその隣の`<USDファイル名>/`に移動し，`<name>.usd`はそのパッケージを参照する薄いラッパーになります（`Physics`バリアントセットの`physx`を選択し，センサーとOmniGraphもここに保存されます）．ラッパーとパッケージのディレクトリは一緒に保管してください．`files_path.usd`がディレクトリの場合は，インポータのメイン`.usda`がそのまま使われます．
+
+> [!NOTE]
+> **ROS 2ライブラリ:** ROS 2がsourceされていない場合，スクリプトはIsaac Sim 6.xに同梱のROS 2 Jazzyライブラリ（`ROS_DISTRO=jazzy`，`RMW_IMPLEMENTATION=rmw_fastrtps_cpp`，`LD_LIBRARY_PATH`に`isaacsim.ros2.core/jazzy/lib`を追加）で自身を再実行します．`OMNI_KIT_ACCEPT_EULA`が未設定なら`yes`を設定します．ステージを自分で読み込む場合は，ROS 2拡張を有効化した後に`app.update()`を数回実行してからステージを開いてください（6.1では，有効化直後に開くと`omni.graph.core`がクラッシュしました）．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -120,16 +151,30 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
 
+### テスト
+
+ロボットを変換し，結果（アーティキュレーション，自由度数，ドライブゲイン，センサー，OmniGraphノード型，120フレームの物理演算，ROS 2コンテキスト）を検証します．Isaac SimのPython環境で実行してください．
+```sh
+$ python3 tests/convert_and_check.py --robot sobit_home
+# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot sobit_home
+```
+PASS/FAILの表を表示し，失敗があれば非ゼロで終了します．
+
+<p align="right">(<a href="#readme-top">上に戻る</a>)</p>
+
+
 <!-- MILESTONE -->
 ## マイルストーン
 
 - [ ] 複数のモバイルベースコントローラのサポート
+- [ ] スワーブ駆動ベースのサポート（`sobit_home.yaml`では`mobile_base`を無効化．差動コントローラのグラフは適用不可）（TODO `swerve`）
 - [ ] YAMLパラメータの最小化（URDFからの自動検出）
 - [ ] TF Staticトピックの配信
 - [ ] カスタムQoS設定のサポート
 - [ ] TF名前空間（Namespace）のサポート
 - [x] 差動ドライブコントローラ（Differential Drive Controller）のサポート
 - [x] ROS 2 Bridgeの自動統合
+- [x] Isaac Sim 6.0 / 6.1への対応
 
 現時点のバッグや新規機能の依頼を確認するために[Issueページ][issues-url] をご覧ください．
 
