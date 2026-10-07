@@ -2,7 +2,8 @@ files_path:
   urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE.urdf
   usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE.usd
 
-# Resolves package:// in the URDF (needed on Isaac Sim 6.x when ROS is not sourced)
+# Every package:// the URDF uses (meshes, textures) must be listed here or discoverable through
+# ament_index / AMENT_PREFIX_PATH / COLCON_PREFIX_PATH / ROS_PACKAGE_PATH; missing ones abort the import
 ros_package_paths: {}
 # my_description: /ABSOLUTE/PATH/TO/my_description
 
@@ -10,6 +11,7 @@ ros_package_paths: {}
 import:
   # Re-parent fixed joints whose parent link has no inertia, so the child stays in the same articulation
   fix_massless_parents: true
+  # allow_missing_meshes: false # true = only warn when a package:// mesh cannot be found
   # expected_articulation_roots: 1 # only used by tests/convert_and_check.py
 
 # Default Physics Drive settings

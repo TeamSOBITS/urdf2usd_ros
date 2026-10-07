@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from .package_paths import resolve_package_paths
+from .package_paths import check_packages, resolve_package_paths
 from .urdf_fixups import reparent_massless_fixed_joints
 
 def prepare_urdf(urdf_path, config_data, rewrite_packages):
@@ -12,7 +12,9 @@ def prepare_urdf(urdf_path, config_data, rewrite_packages):
     """
     config_data = config_data or {}
     fix = config_data.get("import", {}).get("fix_massless_parents", True)
-    paths = resolve_package_paths(config_data, urdf_path) if rewrite_packages and config_data.get("ros_package_paths") else {}
+    resolved = resolve_package_paths(config_data, urdf_path)
+    check_packages(urdf_path, resolved, config_data)
+    paths = resolved if rewrite_packages else {}
     if not fix and not paths:
         return None
     text = open(urdf_path).read()
