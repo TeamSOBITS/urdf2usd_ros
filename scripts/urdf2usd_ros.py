@@ -6,6 +6,9 @@ import yaml
 
 # Check if running in Isaac Sim context
 try:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from utils.ros_env import ensure_bundled_ros
+    ensure_bundled_ros()
     # Initialize Isaac Sim application
     from isaacsim import SimulationApp
     simulation_app = SimulationApp({"renderer": "RayTracedLighting", "headless": True})
