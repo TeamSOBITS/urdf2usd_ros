@@ -14,6 +14,13 @@ def _ensure_physics_scene(stage):
     scene.CreateGravityDirectionAttr().Set((0.0, 0.0, -1.0))
     scene.CreateGravityMagnitudeAttr().Set(9.81 / UsdGeom.GetStageMetersPerUnit(stage))
 
+def _disable_self_collision(stage, prim_path):
+    # the 6.1 importer leaves enabledSelfCollisions unauthored (PhysX default is on)
+    from pxr import PhysxSchema
+    for prim in Usd.PrimRange(stage.GetPrimAtPath(prim_path)):
+        if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+            PhysxSchema.PhysxArticulationAPI.Apply(prim).CreateEnabledSelfCollisionsAttr(False)
+
 def import_urdf(urdf_path, usd_path, config_data=None):
     """Import via URDFImporter (6.x). Returns the default prim path; USD ends up at usd_path.
 
@@ -22,6 +29,9 @@ def import_urdf(urdf_path, usd_path, config_data=None):
     """
     config_data = config_data or {}
     drive = config_data.get("default_drive", {})
+    allow_self_collision = False
+    # SI gains; in auto mode apply_drive_settings overwrites them afterwards
+    manual = drive.get("mode", "manual") != "auto"
     pkgs = [{"name": k, "path": v} for k, v in resolve_package_paths(config_data, urdf_path).items()]
     out_file = usd_path if usd_path.lower().endswith((".usd", ".usda", ".usdc")) else None
     out_dir = os.path.dirname(out_file) if out_file else usd_path
@@ -35,11 +45,11 @@ def import_urdf(urdf_path, usd_path, config_data=None):
             usd_path=staging,
             fix_base=False,
             merge_fixed_joints=False,
-            allow_self_collision=False,
+            allow_self_collision=allow_self_collision,
             collision_type="Convex Hull",
             joint_target_type="position",
-            override_joint_stiffness=drive.get("stiffness", 10000.0),
-            override_joint_damping=drive.get("damping", 100.0),
+            override_joint_stiffness=drive.get("stiffness", 10000.0) if manual else 100.0,
+            override_joint_damping=drive.get("damping", 100.0) if manual else 10.0,
             ros_package_paths=pkgs,
         )
         main = URDFImporter(config).import_urdf()
@@ -75,5 +85,7 @@ def import_urdf(urdf_path, usd_path, config_data=None):
     if vs.HasVariantSet("Physics"):
         vs.GetVariantSet("Physics").SetVariantSelection("physx")
     _ensure_physics_scene(stage)
+    if not allow_self_collision:
+        _disable_self_collision(stage, prim_path)
     stage.GetRootLayer().Save()
     return prim_path
