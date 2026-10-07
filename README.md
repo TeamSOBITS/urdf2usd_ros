@@ -59,7 +59,7 @@ Ensure your environment meets the following requirements before proceeding with 
 | :-------- | :----- | :------------------------------- | :------------ | :-------------------------- |
 | 5.0       | 3.11   | `URDFParseAndImportFile` (legacy) | PhysX         | untested here               |
 | 5.1       | 3.11   | `URDFParseAndImportFile` (legacy) | PhysX         | untested here               |
-| 6.0       | 3.12   | `URDFImporter` (`urdf-usd-converter`) | RTX       | tested                      |
+| 6.0       | 3.12   | `URDFImporter` (`urdf-usd-converter`) | RTX       | expected (same API as 6.1), untested here |
 | 6.1       | 3.12   | `URDFImporter` (`urdf-usd-converter`) | RTX       | tested                      |
 
 The backend is chosen automatically from the installed `isaacsim` version ([isaac_version.py](utils/isaac_version.py)).

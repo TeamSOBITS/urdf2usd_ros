@@ -59,7 +59,7 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 | :-------- | :----- | :------------------------------- | :------------ | :----------------- |
 | 5.0       | 3.11   | `URDFParseAndImportFile`（従来）   | PhysX         | 本環境では未検証     |
 | 5.1       | 3.11   | `URDFParseAndImportFile`（従来）   | PhysX         | 本環境では未検証     |
-| 6.0       | 3.12   | `URDFImporter`（`urdf-usd-converter`） | RTX      | 検証済み            |
+| 6.0       | 3.12   | `URDFImporter`（`urdf-usd-converter`） | RTX      | 想定どおり動作する見込み（6.1と同一API），本環境では未検証 |
 | 6.1       | 3.12   | `URDFImporter`（`urdf-usd-converter`） | RTX      | 検証済み            |
 
 インストールされている`isaacsim`のバージョンから，バックエンドが自動で選択されます（[isaac_version.py](utils/isaac_version.py)）．
