@@ -25,7 +25,7 @@ def _arg(name, default):
 # in the same Kit process crashes omni.graph.core on 6.1.
 _robot = _arg("--robot", None)
 if not _robot:
-    sys.exit("usage: convert_and_check.py --robot NAME [--urdf F] [--usd F] [--package-path NAME=PATH]")
+    sys.exit("usage: convert_and_check.py --robot NAME [--urdf F] [--usd F] [--package-path NAME=PATH] [--skip-step-test]")
 
 def _merge(dst, src):
     for k, v in src.items():
@@ -74,7 +74,7 @@ import omni.physx
 import omni.timeline
 import omni.usd
 import carb.logging
-from pxr import Usd, UsdGeom, UsdPhysics, UsdUtils
+from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdUtils
 
 from utils.isaac_version import VERSION, IS_6
 from utils.isaac_wrappers import lidar_implementation
@@ -93,6 +93,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--robot", required=True)
     ap.add_argument("--frames", type=int, default=120)
+    ap.add_argument("--skip-step-test", action="store_true", help="skip the per-joint step and mimic checks (~41x180 frames)")
     ap.add_argument("--urdf", help="override files_path.urdf")
     ap.add_argument("--usd", help="override files_path.usd")
     ap.add_argument("--package-path", action="append", metavar="NAME=PATH", help="override ros_package_paths entry (repeatable)")
@@ -126,6 +127,8 @@ def main():
     roots = [p for p in Usd.PrimRange(robot) if p.HasAPI(UsdPhysics.ArticulationRootAPI)]
     urdf_joints = {j.get("name"): j.get("type") for j in ET.parse(cfg["files_path"]["urdf"]).getroot().findall("joint")}
     movable = {n for n, t in urdf_joints.items() if t != "fixed"}
+    mimics = {j.get("name"): (m.get("joint"), float(m.get("multiplier", 1)), float(m.get("offset", 0)))
+              for j in ET.parse(cfg["files_path"]["urdf"]).getroot().findall("joint") for m in j.findall("mimic")}
     usd_joints = {p.GetName(): p for p in Usd.PrimRange(robot) if p.IsA(UsdPhysics.Joint)}
     want_roots = cfg.get("import", {}).get("expected_articulation_roots", 1)
     check("articulation found", len(roots) >= 1, ", ".join(r.GetName() for r in roots))
@@ -201,6 +204,27 @@ def main():
     check("TF/JointState topology", want_t <= types or not IS_6, sorted(want_t - types) or "ComputeTransformTree + ReadJointState")
 
     # --- physics frames ---
+    # Ground in the session layer only (never saved into the converted USD) so hold/step run with contact.
+    with Usd.EditContext(stage, stage.GetSessionLayer()):
+        bb = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy])
+        min_z = bb.ComputeWorldBound(robot).ComputeAlignedBox().GetMin()[2]
+        gnd = UsdGeom.Cube.Define(stage, "/_validation_ground")
+        gnd.GetSizeAttr().Set(1.0)
+        gxf = UsdGeom.Xformable(gnd)
+        gxf.AddTranslateOp().Set(Gf.Vec3d(0, 0, -0.5))
+        gxf.AddScaleOp().Set(Gf.Vec3f(20, 20, 1))
+        UsdPhysics.CollisionAPI.Apply(gnd.GetPrim())
+        if min_z < 0:
+            rxf = UsdGeom.Xformable(robot)
+            ops = rxf.GetOrderedXformOps()
+            lift = rxf.AddTranslateOp(opSuffix="validation_lift")
+            lift.Set(Gf.Vec3d(0, 0, -min_z + 0.01))
+            rxf.SetXformOpOrder([lift] + ops)
+    # RTX sensors/graphs would enqueue render work every simulate() call and exhaust GPU memory.
+    paused = [p.GetPath() for p in Usd.PrimRange(robot)
+              if p.GetTypeName().endswith("Graph") or p.GetTypeName() in ("Camera", "OmniLidar", "IsaacImuSensor")
+              or p.GetTypeName().startswith("IsaacSim") or "isaacsim.sensors" in p.GetTypeName()]
+    _set_active(stage, paused, False)
     sid = UsdUtils.StageCache.Get().GetId(stage).ToLongInt()
     omni.physx.get_physx_simulation_interface().attach_stage(sid)
     tl = omni.timeline.get_timeline_interface()
@@ -218,20 +242,37 @@ def main():
     except Exception as e:
         dof = f"view failed: {e}"
     si = omni.physx.get_physx_simulation_interface()
-    t, dt = 0.0, 1 / 60.0
+    sim = {"calls": 0, "t": 0.0, "p0": None, "disp": 0.0}
+    has_view = hasattr(dof, "__int__") and not isinstance(dof, str)
+
+    def root_pos():
+        return np.array(view.get_root_transforms(), dtype=float).reshape(-1, 7)[0, :3]
+
+    def advance(n):
+        for _ in range(n):
+            sim["calls"] += 1
+            if sim["calls"] % 120 == 0:
+                app.update()  # drain any remaining renderer work
+            si.simulate(1 / 60.0, sim["t"])
+            si.fetch_results()
+            sim["t"] += 1 / 60.0
+            if sim["p0"] is not None:
+                sim["disp"] = max(sim["disp"], float(np.linalg.norm(root_pos() - sim["p0"])))
+
     q0, drift = None, None
-    if hasattr(dof, "__int__") and not isinstance(dof, str):
+    if has_view:
         import numpy as np
         q0 = np.array(view.get_dof_positions(), dtype=float)
         drift = np.zeros_like(q0)
+        try:
+            sim["p0"] = root_pos()
+        except Exception:
+            sim["p0"] = None
     for _ in range(args.frames):
-        si.simulate(dt, t)
-        si.fetch_results()
-        t += dt
+        advance(1)
         if q0 is not None:
             drift = np.maximum(drift, np.abs(np.array(view.get_dof_positions(), dtype=float) - q0))
-    if hasattr(dof, "__int__") and not isinstance(dof, str):
-        import numpy as np
+    if has_view:
         nan_ok = bool(np.isfinite(view.get_dof_positions()).all())
     check("articulation DOF (physx view)", isinstance(dof, int) and dof == len(movable), f"{dof} (URDF movable joints: {len(movable)})")
     if drift is not None:
@@ -241,10 +282,26 @@ def main():
             names = [str(i) for i in range(drift.shape[-1])]
         # zero target must hold: 0.02 rad, 0.01 m for prismatic (catches per-degree/per-rad gain mix-ups)
         lim = np.array([0.01 if urdf_joints.get(n) == "prismatic" else 0.02 for n in names])
-        worst = np.unravel_index(np.argmax(drift - lim), drift.shape)
+        worst = np.unravel_index(np.argmax(drift / lim), drift.shape)
         check("hold pose at zero target", bool((drift <= lim).all()),
               f"max drift {drift.max():.4f}; worst {names[worst[-1]]} {drift[worst]:.4f} (limit {lim[worst[-1]]})")
+        hold_disp = sim["disp"]
+        sim["p0"], sim["disp"] = None, 0.0
+        try:
+            sim["p0"] = root_pos()
+        except Exception:
+            pass
+        step_dof_checks(args, view, names, urdf_joints, usd_joints, mimics, advance, np)
+        check("base stays put", sim["p0"] is not None and hold_disp < 0.02 and (args.skip_step_test or sim["disp"] < 0.10),
+              f"hold {hold_disp:.4f} m (limit 0.02)" + ("" if args.skip_step_test else f", steps {sim['disp']:.4f} m (limit 0.10)")
+              if sim["p0"] is not None else "root transform unavailable")
     check(f"{args.frames} physics frames", len(ERRORS) == n_err0 and nan_ok, f"errors={len(ERRORS) - n_err0}, finite={nan_ok}")
+
+    tl.stop()
+    _set_active(stage, paused, True)
+    tl.play()
+    for _ in range(5):
+        app.update()
 
     # --- ROS 2 bridge ---
     for _ in range(30):
@@ -268,6 +325,75 @@ def main():
     tl.stop()
     check("no log errors", len([e for e in ERRORS if "inotify" not in e]) == 0, [e for e in ERRORS if "inotify" not in e][:3])
     return report()
+
+def step_dof_checks(args, view, names, urdf_joints, usd_joints, mimics, advance, np):
+    """Per-joint step tracking plus mimic coupling; both are skipped with --skip-step-test."""
+    if args.skip_step_test:
+        check("step tracking", True, "skipped (--skip-step-test)")
+        check("mimic joints coupled", True, "skipped (--skip-step-test)")
+        return
+    idx = {n: i for i, n in enumerate(names)}
+    followers = {f: m for f, m in mimics.items() if f in idx and m[0] in idx}
+
+    def velocity_driven(n):
+        prim = usd_joints.get(n)
+        api = prim and (UsdPhysics.DriveAPI.Get(prim, "angular") or UsdPhysics.DriveAPI.Get(prim, "linear"))
+        return not api or api.GetStiffnessAttr().Get() == 0
+
+    free = [idx[n] for n in names if velocity_driven(n)]
+    limits = np.array(view.get_dof_limits(), dtype=float).reshape(-1, 2)
+    base = np.array(view.get_dof_positions(), dtype=float).reshape(-1)
+    home = np.array(view.get_dof_position_targets(), dtype=float).reshape(1, -1)
+    ids = np.array([0], np.int32)
+    tested, worst, first_fail = 0, (0.0, ""), None
+    mimic_ok, mimic_n, mimic_fail = True, 0, None
+    for n in names:
+        i = idx[n]
+        if n in followers or velocity_driven(n):
+            continue
+        amp = 0.1 if urdf_joints.get(n) == "prismatic" else 0.3
+        lo, hi = limits[i]
+        d = amp if base[i] + amp <= hi else -amp
+        d = float(np.clip(base[i] + d, lo, hi) - base[i])
+        tgt = home.copy()
+        tgt[0, i] = base[i] + d
+        for f, (leader, mult, _off) in followers.items():
+            if leader == n:  # a real controller commands the follower too, else its drive fights the mimic
+                tgt[0, idx[f]] = base[idx[f]] + mult * d
+        view.set_dof_position_targets(tgt, ids)
+        advance(90)
+        q = np.array(view.get_dof_positions(), dtype=float).reshape(-1)
+        err = abs(q[i] - (base[i] + d))
+        coupled = {idx[f] for f, m in followers.items() if m[0] == n}
+        other = np.abs(q - base)
+        other[[i, *coupled, *free]] = 0.0
+        j = int(other.argmax())
+        tested += 1
+        if err > worst[0]:
+            worst = (err, n)
+        if first_fail is None and (err >= (0.01 if urdf_joints.get(n) == "prismatic" else 0.02) or other[j] >= 0.03):
+            first_fail = f"{n}: err {err:.4f}, {names[j]} moved {other[j]:.4f}"
+        for f, (leader, mult, _off) in followers.items():
+            if leader != n:
+                continue
+            mimic_n += 1
+            want, got = mult * (q[i] - base[i]), q[idx[f]] - base[idx[f]]
+            if abs(got - want) > 0.2 * abs(want) or (mult != 0 and abs(got) < 1e-3):
+                mimic_ok = False
+                mimic_fail = mimic_fail or f"{f}: moved {got:.4f}, want {want:.4f} (leader {n})"
+        view.set_dof_position_targets(home, ids)
+        advance(90)
+    check("step tracking", tested > 0 and first_fail is None,
+          first_fail or f"{tested} DoFs, worst error {worst[0]:.4f} ({worst[1]}); sensors/graphs inactive, velocity DoFs and mimic followers excluded from the others-still rule")
+    if not mimics:
+        check("mimic joints coupled", True, "skipped (no mimic joints)")
+    else:
+        check("mimic joints coupled", mimic_ok and mimic_n > 0, mimic_fail or f"{mimic_n} followers within 20%" if mimic_n else "no mimic leader was stepped")
+
+def _set_active(stage, paths, active):
+    with Usd.EditContext(stage, stage.GetSessionLayer()):
+        for path in paths:
+            stage.GetPrimAtPath(path).SetActive(active)
 
 def _dir_mb(path):
     tot = 0

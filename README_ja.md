@@ -170,10 +170,12 @@ YAMLのゲインはSI単位です（回転関節: N·m/rad，N·m·s/rad，直�
 
 ロボットを変換し，結果（アーティキュレーション，自由度数，ドライブゲイン，センサー，OmniGraphノード型，120フレームの物理演算，ROS 2コンテキスト）を検証します．Isaac SimのPython環境で実行してください．
 ```sh
-$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH]
+$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--skip-step-test]
 # Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...
 ```
 PASS/FAILの表を表示し，失敗があれば非ゼロで終了します．
+動的チェックは（USDには保存されない）セッションレイヤー上の地面で実行します：`hold pose at zero target`，`step tracking`（位置駆動の各自由度を0.3 rad / 0.1 mだけ動かし，0.02 rad / 0.01 m以内で追従，他の自由度は0.03 rad以内），`mimic joints coupled`（URDFの`<mimic>`従動関節が主関節に20%以内で追従），`base stays put`（保持中のルート移動0.02 m未満，ステップ全体で0.10 m未満）．
+`--skip-step-test`でステップとmimicのチェックを省略できます（約41x180フレーム分）．
 マシン固有のパスはコミットするYAMLに含めず，`--urdf`，`--usd`，`--package-path`（複数指定可）で渡すか，Git管理外の`config/{robot}.local.yaml`で上書きしてください（同じ構造で`files_path`や`ros_package_paths`のみ記述でき，コミット済みYAMLにマージされます）．`scripts/urdf2usd_ros.py`は`--config PATH`も受け付けます．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>

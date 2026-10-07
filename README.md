@@ -170,10 +170,12 @@ Before running complex simulations, it is good practice to visualize and test th
 
 Convert a robot and check the result (articulation, DOF count, drive gains, sensors, OmniGraph node types, 120 physics frames, ROS 2 context). Run it with the Isaac Sim Python environment:
 ```sh
-$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH]
+$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--skip-step-test]
 # Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...
 ```
 It prints a PASS/FAIL table and exits non-zero on failure.
+The dynamic checks run on a session-layer ground plane (not saved into the USD): `hold pose at zero target`, `step tracking` (every position-driven DoF steps by 0.3 rad / 0.1 m and tracks within 0.02 rad / 0.01 m while the others stay within 0.03 rad), `mimic joints coupled` (URDF `<mimic>` followers follow their leader within 20%) and `base stays put` (root drift under 0.02 m while holding, 0.10 m over the step sequence).
+`--skip-step-test` skips the step and mimic checks (about 41x180 extra frames).
 Machine-specific paths do not belong in the committed YAML: pass them with `--urdf`, `--usd` and `--package-path` (repeatable), or put them in a git-ignored `config/{robot}.local.yaml` overlay (same structure, e.g. only `files_path` and `ros_package_paths`; it is merged over the committed YAML). `scripts/urdf2usd_ros.py` also accepts `--config PATH`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
