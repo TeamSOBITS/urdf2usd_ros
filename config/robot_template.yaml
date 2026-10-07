@@ -6,6 +6,12 @@ files_path:
 ros_package_paths: {}
 # my_description: /ABSOLUTE/PATH/TO/my_description
 
+# Import options
+import:
+  # Re-parent fixed joints whose parent link has no inertia, so the child stays in the same articulation
+  fix_massless_parents: true
+  # expected_articulation_roots: 1 # only used by tests/convert_and_check.py
+
 # Default Physics Drive settings
 default_drive:
   stiffness: 10000.0 # High stiffness = Position Control

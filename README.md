@@ -109,6 +109,8 @@ The backend is chosen automatically from the installed `isaacsim` version ([isaa
    ```
    On 5.x the URDF is copied with `package://` rewritten (the copy is deleted afterwards); on 6.x the mapping is passed to the importer as `ros_package_paths`.
 
+   **Massless parents:** the Isaac 6 importer anchors a fixed joint whose parent link has no `<inertial>` to the world, which turns its child into a separate articulation root. By default the tool therefore re-parents such joints (when the child has mass) to the nearest massive fixed-connected ancestor, or else to the first massive link of the massless cluster, composing the joint origin so poses and TF frame names are unchanged. One line is logged per joint. Disable it with `import: {fix_massless_parents: false}` in the YAML. This works on all supported versions and uses a temporary URDF copy next to the original.
+
 3. **Verify Environment:** Ensure your Isaac Sim Python environment is active. (This step is automatic if you followed the Conda installation method).
 
 4. **Navigate to the Script Directory:**
@@ -166,7 +168,7 @@ Machine-specific paths do not belong in the committed YAML: pass them with `--ur
 
 ### Known robot-side issues
 
-- **Fixed joint under a massless parent:** a fixed joint whose parent link has no `<inertial>` (e.g. a `base_footprint`-style frame) is anchored to the world by the Isaac 6 importer, and its child becomes a separate articulation root that does not follow the robot. Parent such joints to the nearest link that has inertia (adjust the joint origin accordingly), or give the parent link an inertial.
+- **Fixed joint under a massless parent:** handled automatically (see `import.fix_massless_parents` above). If you disable it, parent such joints to the nearest link that has inertia (adjust the origin) or give the parent link an inertial; otherwise the child becomes a separate articulation root anchored to the world.
 - **Massless frames in TF:** massless frames are not part of the articulation, so the generated TF graph does not publish them. Run `robot_state_publisher` alongside (as the ROS stack normally does) or add static transforms.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

@@ -2,21 +2,19 @@ import os
 from pxr import Usd, UsdGeom, UsdPhysics, Gf, Sdf
 import omni.kit.commands
 from .isaac_version import IS_6
-from .package_paths import resolve_package_paths, rewrite_package_urls
+from .urdf_prepare import prepare_urdf
 
 # ---------------------------------------------------------
 # URDF IMPORT WRAPPER
 # ---------------------------------------------------------
 def import_urdf(urdf_path, usd_path, config_data=None):
-    if IS_6:
-        from .urdf_backend_v6 import import_urdf as backend
-        return backend(urdf_path, usd_path, config_data)
-
-    from .urdf_backend_legacy import import_urdf as backend
-    tmp = None
-    if (config_data or {}).get("ros_package_paths"):
-        tmp = rewrite_package_urls(urdf_path, resolve_package_paths(config_data, urdf_path))
+    # 5.x needs package:// rewritten in a copy; 6.x gets ros_package_paths instead
+    tmp = prepare_urdf(urdf_path, config_data, rewrite_packages=not IS_6)
     try:
+        if IS_6:
+            from .urdf_backend_v6 import import_urdf as backend
+            return backend(tmp or urdf_path, usd_path, config_data)
+        from .urdf_backend_legacy import import_urdf as backend
         return backend(tmp or urdf_path, usd_path)
     finally:
         if tmp:

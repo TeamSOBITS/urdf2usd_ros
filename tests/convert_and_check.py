@@ -126,7 +126,9 @@ def main():
     urdf_joints = {j.get("name"): j.get("type") for j in ET.parse(cfg["files_path"]["urdf"]).getroot().findall("joint")}
     movable = {n for n, t in urdf_joints.items() if t != "fixed"}
     usd_joints = {p.GetName(): p for p in Usd.PrimRange(robot) if p.IsA(UsdPhysics.Joint)}
+    want_roots = cfg.get("import", {}).get("expected_articulation_roots", 1)
     check("articulation found", len(roots) >= 1, ", ".join(r.GetName() for r in roots))
+    check("fixed-joint bodies share one root", len(roots) == want_roots, f"{len(roots)} roots (expected {want_roots})")
     dof_usd = len([n for n in movable if n in usd_joints and
                    (UsdPhysics.DriveAPI.Get(usd_joints[n], "angular") or UsdPhysics.DriveAPI.Get(usd_joints[n], "linear"))])
     check("movable joints in USD", set(movable) <= set(usd_joints), f"{dof_usd}/{len(movable)} with drive")
