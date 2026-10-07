@@ -11,6 +11,9 @@ enable_extension("isaacsim.ros2.bridge")
 enable_extension("isaacsim.sensors.physics")
 enable_extension("isaacsim.robot.wheeled_robots") 
 
+def _node_exists(type_name):
+    return og.get_node_type(type_name).is_valid()
+
 def create_ros2_bridge(stage, robot_prim_path, config_data):
     ros_config = config_data.get("ros2", {})
     if not ros_config.get("enabled", False):
@@ -39,29 +42,47 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         graph_path = f"{robot_prim_path}/ROS2_TF"
         if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
 
+        # Newer Isaac Sim deprecates targetPrims on the publisher; feed it from ComputeTransformTree
+        use_tree = _node_exists("isaacsim.core.nodes.IsaacComputeTransformTree")
+        nodes = [
+            ("OnTick", "omni.graph.action.OnPlaybackTick"),
+            ("SimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+            ("ReadContext", "isaacsim.ros2.bridge.ROS2Context"),
+            ("PubTF", "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
+        ]
+        values = [
+            ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
+            ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
+            ("SimTime.inputs:resetOnStop", ros_config.get("reset_sim_time_on_stop", False)),
+            ("PubTF.inputs:topicName", "tf"),
+        ]
+        conns = [
+            ("OnTick.outputs:tick", "PubTF.inputs:execIn"),
+            ("ReadContext.outputs:context", "PubTF.inputs:context"),
+            ("SimTime.outputs:simulationTime", "PubTF.inputs:timeStamp"),
+        ]
+        if use_tree:
+            nodes.append(("TFTree", "isaacsim.core.nodes.IsaacComputeTransformTree"))
+            values += [
+                ("TFTree.inputs:parentPrim", [Sdf.Path(target_path)]),
+                ("TFTree.inputs:targetPrims", [Sdf.Path(target_path)]),
+            ]
+            conns += [
+                ("OnTick.outputs:tick", "TFTree.inputs:execIn"),
+                ("TFTree.outputs:parentFrames", "PubTF.inputs:parentFrames"),
+                ("TFTree.outputs:childFrames", "PubTF.inputs:childFrames"),
+                ("TFTree.outputs:translations", "PubTF.inputs:translations"),
+                ("TFTree.outputs:orientations", "PubTF.inputs:orientations"),
+            ]
+        else:
+            values += [
+                ("PubTF.inputs:parentPrim", [Sdf.Path(target_path)]),
+                ("PubTF.inputs:targetPrims", [Sdf.Path(target_path)]),
+            ]
+
         og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "execution"},
-            {
-                keys.CREATE_NODES: [
-                    ("OnTick", "omni.graph.action.OnPlaybackTick"),
-                    ("SimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
-                    ("ReadContext", "isaacsim.ros2.bridge.ROS2Context"),
-                    ("PubTF", "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
-                ],
-                keys.SET_VALUES: [
-                    ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
-                    ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
-                    ("SimTime.inputs:resetOnStop", ros_config.get("reset_sim_time_on_stop", False)),
-                    ("PubTF.inputs:parentPrim", [Sdf.Path(target_path)]),
-                    ("PubTF.inputs:targetPrims", [Sdf.Path(target_path)]),
-                    ("PubTF.inputs:topicName", "tf"),
-                ],
-                keys.CONNECT: [
-                    ("OnTick.outputs:tick", "PubTF.inputs:execIn"),
-                    ("ReadContext.outputs:context", "PubTF.inputs:context"),
-                    ("SimTime.outputs:simulationTime", "PubTF.inputs:timeStamp"),
-                ]
-            }
+            {keys.CREATE_NODES: nodes, keys.SET_VALUES: values, keys.CONNECT: conns},
         )
 
         print(f"  + TF Publisher Graph Built Successfully. Topic: tf")
@@ -73,28 +94,42 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         graph_path = f"{robot_prim_path}/ROS2_JointStates"
         if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
 
+        use_reader = _node_exists("isaacsim.sensors.physics.IsaacReadJointState")
+        nodes = [
+            ("OnTick", "omni.graph.action.OnPlaybackTick"),
+            ("SimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+            ("ReadContext", "isaacsim.ros2.bridge.ROS2Context"),
+            ("PubJoints", "isaacsim.ros2.bridge.ROS2PublishJointState"),
+        ]
+        values = [
+            ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
+            ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
+            ("PubJoints.inputs:nodeNamespace", ros_config.get("namespace", "")),
+            ("PubJoints.inputs:topicName", ros_config.get("topic_joint_states", "joint_states")),
+        ]
+        conns = [
+            ("OnTick.outputs:tick", "PubJoints.inputs:execIn"),
+            ("ReadContext.outputs:context", "PubJoints.inputs:context"),
+            ("SimTime.outputs:simulationTime", "PubJoints.inputs:timeStamp"),
+        ]
+        if use_reader:
+            nodes.append(("ReadJoints", "isaacsim.sensors.physics.IsaacReadJointState"))
+            values.append(("ReadJoints.inputs:prim", [Sdf.Path(target_path)]))
+            conns += [
+                ("OnTick.outputs:tick", "ReadJoints.inputs:execIn"),
+                ("ReadJoints.outputs:jointNames", "PubJoints.inputs:jointNames"),
+                ("ReadJoints.outputs:jointPositions", "PubJoints.inputs:jointPositions"),
+                ("ReadJoints.outputs:jointVelocities", "PubJoints.inputs:jointVelocities"),
+                ("ReadJoints.outputs:jointEfforts", "PubJoints.inputs:jointEfforts"),
+                ("ReadJoints.outputs:jointDofTypes", "PubJoints.inputs:jointDofTypes"),
+                ("ReadJoints.outputs:stageMetersPerUnit", "PubJoints.inputs:stageMetersPerUnit"),
+            ]
+        else:
+            values.append(("PubJoints.inputs:targetPrim", [Sdf.Path(target_path)]))
+
         og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "execution"},
-            {
-                keys.CREATE_NODES: [
-                    ("OnTick", "omni.graph.action.OnPlaybackTick"),
-                    ("SimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
-                    ("ReadContext", "isaacsim.ros2.bridge.ROS2Context"),
-                    ("PubJoints", "isaacsim.ros2.bridge.ROS2PublishJointState"),
-                ],
-                keys.SET_VALUES: [
-                    ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
-                    ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
-                    ("PubJoints.inputs:targetPrim", [Sdf.Path(target_path)]),
-                    ("PubJoints.inputs:nodeNamespace", ros_config.get("namespace", "")),
-                    ("PubJoints.inputs:topicName", ros_config.get("topic_joint_states", "joint_states")),
-                ],
-                keys.CONNECT: [
-                    ("OnTick.outputs:tick", "PubJoints.inputs:execIn"),
-                    ("ReadContext.outputs:context", "PubJoints.inputs:context"),
-                    ("SimTime.outputs:simulationTime", "PubJoints.inputs:timeStamp"),
-                ]
-            }
+            {keys.CREATE_NODES: nodes, keys.SET_VALUES: values, keys.CONNECT: conns},
         )
 
         print(f"  + Joint State Publisher Graph Built Successfully. Topic: {ros_config.get('topic_joint_states', 'joint_states')}")
