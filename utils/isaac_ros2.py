@@ -2,6 +2,7 @@ import omni.graph.core as og
 from isaacsim.core.utils.extensions import enable_extension
 from pxr import Usd, UsdPhysics, Sdf
 from .isaac_wrappers import lidar_implementation
+from .isaac_version import IS_6
 
 # Enable Extensions
 enable_extension("isaacsim.core.nodes")
@@ -10,6 +11,13 @@ enable_extension("omni.graph.nodes_core")
 enable_extension("isaacsim.ros2.bridge")
 enable_extension("isaacsim.sensors.physics")
 enable_extension("isaacsim.robot.wheeled_robots") 
+
+def _sub(settings, group, key, default):
+    return settings.get(group, {}).get(key, default)
+
+def _frame_skip(settings, group):
+    # 6.x deprecates frame skipping in favour of omni:sensor:tickRate on the prim
+    return 0 if IS_6 else _sub(settings, group, "frame_skip", 0)
 
 def _node_exists(type_name):
     return og.get_node_type(type_name).is_valid()
@@ -276,33 +284,33 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("CreateRP.inputs:width", settings.get("image_width", 1280)),
 
                         # RGB
-                        ("HelperRGB.inputs:enableSemanticLabels", settings.get("rgb.enable_semantic_labels", False)),
-                        ("HelperRGB.inputs:enabled", settings.get("rgb._enabled", True)),
-                        ("HelperRGB.inputs:frameSkipCount", settings.get("rgb.frame_skip", 0)),
-                        ("HelperRGB.inputs:resetSimulationTimeOnStop", settings.get("rgb.reset_sim_time_on_stop", False)),
+                        ("HelperRGB.inputs:enableSemanticLabels", _sub(settings, "rgb", "enable_semantic_labels", False)),
+                        ("HelperRGB.inputs:enabled", _sub(settings, "rgb", "enabled", True)),
+                        ("HelperRGB.inputs:frameSkipCount", _frame_skip(settings, "rgb")),
+                        ("HelperRGB.inputs:resetSimulationTimeOnStop", _sub(settings, "rgb", "reset_sim_time_on_stop", False)),
                         ("HelperRGB.inputs:type", "rgb"),
                         ("HelperRGB.inputs:nodeNamespace", ros_config.get("namespace", "")),
-                        ("HelperRGB.inputs:topicName", settings.get("rgb.topic", f"{name}/rgb")),
+                        ("HelperRGB.inputs:topicName", _sub(settings, "rgb", "topic", f"{name}/rgb")),
                         ("HelperRGB.inputs:frameId", name),
 
                         # Depth
-                        ("HelperDepth.inputs:enableSemanticLabels", settings.get("depth.enable_semantic_labels", False)),
-                        ("HelperDepth.inputs:enabled", settings.get("depth._enabled", True)),
-                        ("HelperDepth.inputs:frameSkipCount", settings.get("depth.frame_skip", 0)),
-                        ("HelperDepth.inputs:resetSimulationTimeOnStop", settings.get("depth.reset_sim_time_on_stop", False)),
+                        ("HelperDepth.inputs:enableSemanticLabels", _sub(settings, "depth", "enable_semantic_labels", False)),
+                        ("HelperDepth.inputs:enabled", _sub(settings, "depth", "enabled", True)),
+                        ("HelperDepth.inputs:frameSkipCount", _frame_skip(settings, "depth")),
+                        ("HelperDepth.inputs:resetSimulationTimeOnStop", _sub(settings, "depth", "reset_sim_time_on_stop", False)),
                         ("HelperDepth.inputs:type", "depth"),
                         ("HelperDepth.inputs:nodeNamespace", ros_config.get("namespace", "")),
-                        ("HelperDepth.inputs:topicName", settings.get("depth.topic", f"{name}/depth")),
+                        ("HelperDepth.inputs:topicName", _sub(settings, "depth", "topic", f"{name}/depth")),
                         ("HelperDepth.inputs:frameId", name),
 
                         # Point Cloud
-                        ("HelperPCL.inputs:enableSemanticLabels", settings.get("pcl.enable_semantic_labels", False)),
-                        ("HelperPCL.inputs:enabled", settings.get("pcl._enabled", True)),
-                        ("HelperPCL.inputs:frameSkipCount", settings.get("pcl.frame_skip", 0)),
-                        ("HelperPCL.inputs:resetSimulationTimeOnStop", settings.get("pcl.reset_sim_time_on_stop", False)),
+                        ("HelperPCL.inputs:enableSemanticLabels", _sub(settings, "pcl", "enable_semantic_labels", False)),
+                        ("HelperPCL.inputs:enabled", _sub(settings, "pcl", "enabled", True)),
+                        ("HelperPCL.inputs:frameSkipCount", _frame_skip(settings, "pcl")),
+                        ("HelperPCL.inputs:resetSimulationTimeOnStop", _sub(settings, "pcl", "reset_sim_time_on_stop", False)),
                         ("HelperPCL.inputs:type", "depth_pcl"),
                         ("HelperPCL.inputs:nodeNamespace", ros_config.get("namespace", "")),
-                        ("HelperPCL.inputs:topicName", settings.get("pcl.topic", f"{name}/points")),
+                        ("HelperPCL.inputs:topicName", _sub(settings, "pcl", "topic", f"{name}/points")),
                         ("HelperPCL.inputs:frameId", name),
                     ],
                     keys.CONNECT: [
@@ -329,9 +337,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             )
 
             print(f"  + Camera {name} Graph Built Successfully")
-            print(f"    - RGB Topic: {settings.get('rgb.topic', f'{name}/rgb')}")
-            print(f"    - Depth Topic: {settings.get('depth.topic', f'{name}/depth')}")
-            print(f"    - PCL Topic: {settings.get('pcl.topic', f'{name}/points')}")
+            print(f"    - RGB Topic: {_sub(settings, 'rgb', 'topic', f'{name}/rgb')}")
+            print(f"    - Depth Topic: {_sub(settings, 'depth', 'topic', f'{name}/depth')}")
+            print(f"    - PCL Topic: {_sub(settings, 'pcl', 'topic', f'{name}/points')}")
 
         # --- LIDAR GRAPH ---
         elif stype == "lidar" and lidar_implementation(settings) == "rtx":
