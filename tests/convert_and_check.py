@@ -3,6 +3,7 @@
     cd <IsaacLab> && uv run --no-sync python tests/convert_and_check.py --robot sobit_home
 """
 import argparse
+import math
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -149,19 +150,28 @@ def main():
     check("URDF visual meshes present in USD", not miss, miss[:4] or f"{n_vis} mesh visuals, all have geometry")
 
     # --- drives ---
-    dd = cfg.get("default_drive", {})
+    # explicit overrides are SI in the YAML; angular USD gains are per degree
     bad = []
     for jn, jc in cfg.get("joints", {}).items():
         prim = usd_joints.get(jn)
-        api = prim and (UsdPhysics.DriveAPI.Get(prim, "angular") or UsdPhysics.DriveAPI.Get(prim, "linear"))
+        ang = prim and UsdPhysics.DriveAPI.Get(prim, "angular")
+        api = ang or (prim and UsdPhysics.DriveAPI.Get(prim, "linear"))
         if not api:
             bad.append(f"{jn}:no drive")
             continue
+        f = math.pi / 180.0 if ang else 1.0
         k, d = api.GetStiffnessAttr().Get(), api.GetDampingAttr().Get()
-        if abs(k - jc.get("stiffness", dd.get("stiffness", 1e4))) > 1e-6 or abs(d - jc.get("damping", dd.get("damping", 100.0))) > 1e-6:
-            bad.append(f"{jn}:{k}/{d}")
-    sample = {j: (cfg["joints"][j]["stiffness"], cfg["joints"][j]["damping"]) for j in list(cfg.get("joints", {}))[:1] + list(cfg.get("joints", {}))[-1:]}
-    check("drive gains", not bad, bad[:3] or f"{len(cfg.get('joints', {}))} joints OK, e.g. {sample}")
+        for key, got in (("stiffness", k), ("damping", d)):
+            if key in jc and abs(got - jc[key] * f) > 1e-6 * max(1.0, abs(got)):
+                bad.append(f"{jn}:{key} {got} != {jc[key] * f}")
+    gains = []
+    for n in movable:
+        prim = usd_joints.get(n)
+        api = prim and (UsdPhysics.DriveAPI.Get(prim, "angular") or UsdPhysics.DriveAPI.Get(prim, "linear"))
+        if api:
+            gains.append((n, api.GetStiffnessAttr().Get(), api.GetDampingAttr().Get()))
+    bad += [f"{n}:non-finite/negative {k}/{d}" for n, k, d in gains if not (math.isfinite(k) and math.isfinite(d) and k >= 0 and d >= 0)]
+    check("drive gains", not bad, bad[:3] or f"{len(gains)} drives, {len(cfg.get('joints', {}))} explicit overrides OK")
 
     # --- sensors ---
     for name, s in cfg.get("sensors", {}).items():
@@ -209,14 +219,31 @@ def main():
         dof = f"view failed: {e}"
     si = omni.physx.get_physx_simulation_interface()
     t, dt = 0.0, 1 / 60.0
+    q0, drift = None, None
+    if hasattr(dof, "__int__") and not isinstance(dof, str):
+        import numpy as np
+        q0 = np.array(view.get_dof_positions(), dtype=float)
+        drift = np.zeros_like(q0)
     for _ in range(args.frames):
         si.simulate(dt, t)
         si.fetch_results()
         t += dt
+        if q0 is not None:
+            drift = np.maximum(drift, np.abs(np.array(view.get_dof_positions(), dtype=float) - q0))
     if hasattr(dof, "__int__") and not isinstance(dof, str):
         import numpy as np
         nan_ok = bool(np.isfinite(view.get_dof_positions()).all())
     check("articulation DOF (physx view)", isinstance(dof, int) and dof == len(movable), f"{dof} (URDF movable joints: {len(movable)})")
+    if drift is not None:
+        try:
+            names = list(view.shared_metatype.dof_names)
+        except Exception:
+            names = [str(i) for i in range(drift.shape[-1])]
+        # zero target must hold: 0.02 rad, 0.01 m for prismatic (catches per-degree/per-rad gain mix-ups)
+        lim = np.array([0.01 if urdf_joints.get(n) == "prismatic" else 0.02 for n in names])
+        worst = np.unravel_index(np.argmax(drift - lim), drift.shape)
+        check("hold pose at zero target", bool((drift <= lim).all()),
+              f"max drift {drift.max():.4f}; worst {names[worst[-1]]} {drift[worst]:.4f} (limit {lim[worst[-1]]})")
     check(f"{args.frames} physics frames", len(ERRORS) == n_err0 and nan_ok, f"errors={len(ERRORS) - n_err0}, finite={nan_ok}")
 
     # --- ROS 2 bridge ---
