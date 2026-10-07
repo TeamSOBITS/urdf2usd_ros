@@ -71,7 +71,7 @@ def main():
         stage = omni.usd.get_context().get_stage()
 
         # Apply Settings
-        apply_drive_settings(stage, prim_path, config_data)
+        apply_drive_settings(stage, prim_path, config_data, os.path.abspath(urdf_path))
         apply_sensor_settings(stage, prim_path, config_data)
         create_ros2_bridge(stage, prim_path, config_data)
 

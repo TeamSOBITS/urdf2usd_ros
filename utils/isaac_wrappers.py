@@ -3,6 +3,7 @@ from pxr import Usd, UsdGeom, UsdPhysics, Gf, Sdf
 import omni.kit.commands
 from .isaac_version import IS_6
 from .urdf_prepare import prepare_urdf
+from .drive_gains import subtree_inertia, links_without_inertial, resolve_gains, usd_gain, natural_frequency_hz
 
 # ---------------------------------------------------------
 # URDF IMPORT WRAPPER
@@ -23,35 +24,30 @@ def import_urdf(urdf_path, usd_path, config_data=None):
 # ---------------------------------------------------------
 # DRIVE SETTINGS APPLIER
 # ---------------------------------------------------------
-def apply_drive_settings(stage, robot_prim_path, config_data):
+def apply_drive_settings(stage, robot_prim_path, config_data, urdf_path=None):
     print("--- Configuring Joint Drives ---")
     robot_prim = stage.GetPrimAtPath(robot_prim_path)
-    joint_config = config_data.get("joints", {})
-    defaults = config_data.get("default_drive", {})
+    info = subtree_inertia(urdf_path) if urdf_path else None
+    if urdf_path:
+        for link in links_without_inertial(urdf_path):
+            print(f"  ! Link '{link}' has no <inertial>: PhysX assigns a default mass (1 kg without geometry, "
+                  f"density-derived with visuals); add an inertial to the URDF.")
 
-    def_stiff = defaults.get("stiffness", 10000.0)
-    def_damp = defaults.get("damping", 100.0)
+    joints = {p.GetName(): p for p in Usd.PrimRange(robot_prim) if p.IsA(UsdPhysics.Joint)}
+    gains = resolve_gains(list(joints), config_data, info)
 
-    for prim in Usd.PrimRange(robot_prim):
-        if prim.IsA(UsdPhysics.Joint):
-            joint_name = prim.GetName()
-
-            # Determine values
-            stiffness = def_stiff
-            damping = def_damp
-            
-            if joint_name in joint_config:
-                stiffness = joint_config[joint_name].get("stiffness", def_stiff)
-                damping = joint_config[joint_name].get("damping", def_damp)
-
-            # Apply to Angular or Linear API
-            for api_type in ["angular", "linear"]:
-                drive_api = UsdPhysics.DriveAPI.Get(prim, api_type)
-                if drive_api:
-                    drive_api.GetStiffnessAttr().Set(stiffness)
-                    drive_api.GetDampingAttr().Set(damping)
-
-                    print(f"  + Joint: {joint_name} | Type: {api_type} | Stiffness: {stiffness}, Damping: {damping}")
+    for name, prim in joints.items():
+        k, d = gains[name]
+        for api_type in ["angular", "linear"]:
+            drive_api = UsdPhysics.DriveAPI.Get(prim, api_type)
+            if not drive_api:
+                continue
+            angular = api_type == "angular"
+            k_usd, d_usd = usd_gain(k, angular), usd_gain(d, angular)
+            drive_api.GetStiffnessAttr().Set(k_usd)
+            drive_api.GetDampingAttr().Set(d_usd)
+            fn = f" | fn {natural_frequency_hz(k, info[name]):.1f} Hz" if info and name in info and k > 0 else ""
+            print(f"  + Joint: {name} | {api_type} | k={k:.4g} d={d:.4g} (SI) | USD k={k_usd:.4g} d={d_usd:.4g}{fn}")
 
 # ---------------------------------------------------------
 # SENSOR CREATION HELPERS
