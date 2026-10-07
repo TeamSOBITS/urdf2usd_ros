@@ -74,6 +74,10 @@ def _create_camera(stage, path, config):
     if rot:
         UsdGeom.XformCommonAPI(cam_prim).SetRotate(Gf.Vec3f(*rot))
 
+    # 6.x ROS camera helpers take their rate from the sensor prim (frameSkipCount deprecated)
+    if IS_6:
+        cam_prim.CreateAttribute("omni:sensor:tickRate", Sdf.ValueTypeNames.Float).Set(float(config.get("update_rate", 30.0)))
+
     # Handle Visibility
     is_visible = config.get("visible", True) 
     imageable = UsdGeom.Imageable(cam_prim)
@@ -84,8 +88,15 @@ def _create_camera(stage, path, config):
 
     print(f"  + Created Camera: {path} (Visible: {is_visible})")
 
+def lidar_implementation(config):
+    impl = config.get("implementation", "rtx" if IS_6 else "physx").lower()
+    if impl == "physx" and IS_6:
+        print("Warning: PhysX lidar was removed in Isaac Sim 6.x, falling back to RTX lidar")
+        return "rtx"
+    return impl
+
 def _create_lidar(stage, path, config):
-    impl = config.get("implementation", "physx").lower()
+    impl = lidar_implementation(config)
     if impl == "rtx":
         if "/" in path:
             parent_path, sensor_name = path.rsplit("/", 1)
@@ -94,13 +105,18 @@ def _create_lidar(stage, path, config):
             return
 
         profile = config.get("profile", "Example_Rotary")
+        extra = {}
+        if IS_6:
+            # 6.x xform ops need a real Quatd; scan rate comes from the sensor tick rate
+            extra = {"omni:sensor:tickRate": config.get("rotation_rate", 20.0)}
         success, _ = omni.kit.commands.execute(
             "IsaacSensorCreateRtxLidar",
             path=sensor_name,
             parent=parent_path,
             config=profile,
             translation=(0, 0, 0),
-            orientation=(1, 0, 0, 0), # (w, x, y, z)
+            orientation=Gf.Quatd(1, 0, 0, 0) if IS_6 else (1, 0, 0, 0), # (w, x, y, z)
+            **extra,
         )
 
         if success:
