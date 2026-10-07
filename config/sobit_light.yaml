@@ -2,52 +2,23 @@ files_path:
   urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE/sobit_light.urdf
   usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE/sobit_light.usd
 
-# Default Physics Drive settings
+# Drive gains are SI (N.m/rad, N.m.s/rad; N/m, N.s/m for prismatic); converted to USD per-degree on write
 default_drive:
-  stiffness: 10000.0 # High stiffness = Position Control
-  damping: 100.0
+  mode: auto # gains from URDF inertia, see README "Joint drive gains"
+  natural_frequency: 10.0 # Hz
+  damping_ratio: 1.0
+  max_sag_deg: 0.5
+  max_sag_m: 0.002
+  velocity_damping: 10.0
 
-# Joint Configuration
 joints:
-  # WHEELS: Set stiffness to 0.0 for Velocity Control
+  # Wheel velocity joints: stiffness 0.0 = velocity control
   base_l_drive_wheel_joint:
     stiffness: 0.0
-    damping: 10000.0
+    damping: 10.0
   base_r_drive_wheel_joint:
     stiffness: 0.0
-    damping: 10000.0
-  
-  # ARM/HEAD: Typically Position Control
-  head_pitch_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  head_yaw_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_shoulder_roll_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_shoulder_pitch_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_shoulder_pitch_sub_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_elbow_pitch_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_forearm_roll_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_wrist_pitch_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_wrist_roll_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  hand_joint:
-    stiffness: 8000.0
-    damping: 500.0
+    damping: 10.0
 
 # Sensor Configuration
 sensors:

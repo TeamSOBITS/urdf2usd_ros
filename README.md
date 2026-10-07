@@ -137,6 +137,18 @@ The backend is chosen automatically from the installed `isaacsim` version ([isaa
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
+### Joint drive gains
+
+Gains in the YAML are SI: N·m/rad and N·m·s/rad for revolute joints, N/m and N·s/m for prismatic ones. USD stores angular gains per degree, so they are converted (×π/180) when written; each joint is printed with its SI values, the USD values and the natural frequency the gains imply.
+
+- **`default_drive.mode: auto` (recommended):** per joint `k = max(I_max·(2πf)², τ_g,max / e_max)`, `d = 2ζ·sqrt(k·I_max)`, where `I_max` and `τ_g,max` bound the inertia and gravity torque of the whole child subtree (from the URDF inertials, any pose) and `f`, `ζ`, `e_max` are `natural_frequency` (Hz), `damping_ratio` and `max_sag_deg` / `max_sag_m`. Light wrist and finger joints therefore get far softer gains than the shoulder, which a single uniform value cannot do.
+- **Velocity joints:** an entry under `joints:` with `stiffness: 0.0` keeps zero stiffness and uses its `damping`, or `default_drive.velocity_damping` if omitted.
+- **Manual:** give `default_drive.stiffness` / `damping` (no `mode`) for one value on every joint, and override single joints under `joints:`. Overrides always win over auto mode.
+- **Massless links:** a link without `<inertial>` gets a default mass from PhysX (1 kg without geometry, density-derived with visuals) and a warning is printed. Add an inertial to the URDF, otherwise the gains and the dynamics do not match the real robot.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
 ### Visualize on Isaac Sim
 
 Before running complex simulations, it is good practice to visualize and test the generated asset.
@@ -149,7 +161,7 @@ Before running complex simulations, it is good practice to visualize and test th
 2. Open your newly generated USD file.
 3. Click the **Play (▶)** button to start the physics simulation.
 4. Manually interact with the robot joints to confirm correct articulation and limits.
-5. If the robot struggles to reach target positions or behaves erratically, you may need to fine-tune the `stiffness` and `damping` values in your YAML configuration and regenerate the USD.
+5. If the robot struggles to reach target positions or behaves erratically, you may need to fine-tune the drive gains (see Joint drive gains) and regenerate the USD.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

@@ -14,34 +14,36 @@ import:
   # allow_missing_meshes: false # true = only warn when a package:// mesh cannot be found
   # expected_articulation_roots: 1 # only used by tests/convert_and_check.py
 
-# Default Physics Drive settings
+# Drive gains are SI: N.m/rad and N.m.s/rad (revolute), N/m and N.s/m (prismatic).
+# They are converted to USD's per-degree angular gains when written.
 default_drive:
-  stiffness: 10000.0 # High stiffness = Position Control
-  damping: 100.0
+  # auto (recommended): per joint k = max(I_max (2 pi f)^2, tau_g_max / e_max), d = 2 zeta sqrt(k I_max),
+  # from the URDF subtree inertia, so light wrist/finger joints get far softer gains than the shoulder.
+  mode: auto
+  natural_frequency: 10.0 # Hz, bandwidth every joint is tuned for
+  damping_ratio: 1.0
+  max_sag_deg: 0.5 # allowed gravity sag, revolute
+  max_sag_m: 0.002 # allowed gravity sag, prismatic
+  velocity_damping: 10.0 # damping of velocity-driven joints (stiffness 0.0) without an explicit damping
 
-# Joint Configuration
+  # manual: the same gains for every joint (omit "mode", or use mode: manual)
+  # stiffness: 10000.0
+  # damping: 100.0
+
+# Per-joint overrides (SI) always win over the default
 joints:
-  # WHEELS: Set stiffness to 0.0 for Velocity Control
+  # WHEELS: stiffness 0.0 = Velocity Control (damping falls back to velocity_damping if omitted)
   wheel_left_joint:
     stiffness: 0.0
-    damping: 10000.0
+    damping: 10.0
   wheel_right_joint:
     stiffness: 0.0
-    damping: 10000.0
-  
-  # ARM/HAND/HEAD: Set damping and stiffness for Position Control
-  arm_joint_1:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_joint_2:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_joint_3:
-    stiffness: 8000.0
-    damping: 500.0
-  hand_joint:
-    stiffness: 8000.0
-    damping: 500.0
+    damping: 10.0
+
+  # Example of a manual override for one position-controlled joint
+  # arm_joint_1:
+  #   stiffness: 800.0
+  #   damping: 50.0
 
 # Sensor Configuration ("camera", "lidar", "imu" supported)
 sensors:

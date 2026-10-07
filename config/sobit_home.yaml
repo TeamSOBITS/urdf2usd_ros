@@ -8,134 +8,29 @@ ros_package_paths:
   urg_node: /ABSOLUTE/PATH/TO/urg_node
   orbbec_description: /ABSOLUTE/PATH/TO/orbbec_description
 
+# Drive gains are SI (N.m/rad, N.m.s/rad; N/m, N.s/m for prismatic); converted to USD per-degree on write
 default_drive:
-  stiffness: 8000.0
-  damping: 500.0
+  mode: auto # gains from URDF inertia, see README "Joint drive gains"
+  natural_frequency: 10.0 # Hz
+  damping_ratio: 1.0
+  max_sag_deg: 0.5
+  max_sag_m: 0.002
+  velocity_damping: 10.0
 
 joints:
-  wheel_steer_f_l_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  wheel_steer_f_r_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  wheel_steer_b_l_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  wheel_steer_b_r_joint:
-    stiffness: 8000.0
-    damping: 500.0
+  # Wheel velocity joints: stiffness 0.0 = velocity control
   wheel_drive_f_l_joint:
     stiffness: 0.0
-    damping: 10000.0
+    damping: 10.0
   wheel_drive_f_r_joint:
     stiffness: 0.0
-    damping: 10000.0
+    damping: 10.0
   wheel_drive_b_l_joint:
     stiffness: 0.0
-    damping: 10000.0
+    damping: 10.0
   wheel_drive_b_r_joint:
     stiffness: 0.0
-    damping: 10000.0
-  body_lift_joint:
-    stiffness: 50000.0
-    damping: 5000.0
-  arm_left_shoulder_tilt_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_left_upper_roll_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_left_upper_flex_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_left_elbow_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_left_lower_flex_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_left_wrist_tilt_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_left_wrist_roll_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_right_shoulder_tilt_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_right_upper_roll_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_right_upper_flex_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_right_elbow_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_right_lower_flex_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_right_wrist_tilt_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  arm_right_wrist_roll_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  hand_left_finger_l_mcp_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_left_finger_l_pip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_left_finger_l_dip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_left_finger_r_mcp_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_left_finger_r_pip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_left_finger_r_dip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_left_finger_c_mcp_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_left_finger_c_ip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_l_mcp_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_l_pip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_l_dip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_r_mcp_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_r_pip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_r_dip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_c_mcp_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  hand_right_finger_c_ip_joint:
-    stiffness: 2000.0
-    damping: 100.0
-  head_pan_joint:
-    stiffness: 8000.0
-    damping: 500.0
-  head_tilt_joint:
-    stiffness: 8000.0
-    damping: 500.0
+    damping: 10.0
 
 sensors:
   head_camera:
