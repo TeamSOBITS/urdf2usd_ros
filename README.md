@@ -163,6 +163,13 @@ It prints a PASS/FAIL table and exits non-zero on failure.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
+### Known robot-side issues
+
+- **SOBIT HOME `plate_cover_joint`:** its parent is `base_footprint` (a massless frame), so `plate_cover_link` (1.5 kg) becomes a second articulation root pinned to the world while the robot moves (in a 120-frame headless run the cover stayed at z=0.496 while the base rose from 0.309 to 0.413). Fix in `sobit_home_description`: re-parent `plate_cover_joint` to `base_link`.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
 <!-- MILESTONE -->
 ## Milestone
 
