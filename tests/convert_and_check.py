@@ -73,7 +73,7 @@ import omni.physx
 import omni.timeline
 import omni.usd
 import carb.logging
-from pxr import Usd, UsdPhysics, UsdUtils
+from pxr import Usd, UsdGeom, UsdPhysics, UsdUtils
 
 from utils.isaac_version import VERSION, IS_6
 from utils.isaac_wrappers import lidar_implementation
@@ -132,6 +132,21 @@ def main():
     dof_usd = len([n for n in movable if n in usd_joints and
                    (UsdPhysics.DriveAPI.Get(usd_joints[n], "angular") or UsdPhysics.DriveAPI.Get(usd_joints[n], "linear"))])
     check("movable joints in USD", set(movable) <= set(usd_joints), f"{dof_usd}/{len(movable)} with drive")
+
+    # --- visual meshes ---
+    def _mesh_points(link_name):
+        for cand in (p for p in Usd.PrimRange(robot, Usd.TraverseInstanceProxies()) if p.GetName() == link_name):
+            for q in Usd.PrimRange(cand, Usd.TraverseInstanceProxies()):
+                if q.IsA(UsdGeom.Mesh) and len(UsdGeom.Mesh(q).GetPointsAttr().Get() or []) > 0:
+                    return True
+        return False
+    miss = []
+    for l in ET.parse(cfg["files_path"]["urdf"]).getroot().findall("link"):
+        for m in l.findall("visual/geometry/mesh"):
+            if not _mesh_points(l.get("name")):
+                miss.append(f"{l.get('name')}:{m.get('filename')}")
+    n_vis = len(ET.parse(cfg["files_path"]["urdf"]).getroot().findall("link/visual/geometry/mesh"))
+    check("URDF visual meshes present in USD", not miss, miss[:4] or f"{n_vis} mesh visuals, all have geometry")
 
     # --- drives ---
     dd = cfg.get("default_drive", {})

@@ -107,6 +107,7 @@ The backend is chosen automatically from the installed `isaacsim` version ([isaa
    ros_package_paths:
      my_description: /path/to/my_description
    ```
+   Every `package://` used by the URDF (meshes, textures, also from sensor or third-party description packages) must be listed or discoverable: packages missing from the YAML are looked up through `ament_index` and then `$AMENT_PREFIX_PATH` / `$COLCON_PREFIX_PATH` / `$ROS_PACKAGE_PATH` (`share/<pkg>`), so exporting those variables is enough without sourcing ROS. A `WARNING: Unresolved package://<pkg> (N meshes: ...)` is printed for each unresolved package and the import aborts, unless `import: {allow_missing_meshes: true}` is set.
    On 5.x the URDF is copied with `package://` rewritten (the copy is deleted afterwards); on 6.x the mapping is passed to the importer as `ros_package_paths`.
 
    **Massless parents:** the Isaac 6 importer anchors a fixed joint whose parent link has no `<inertial>` to the world, which turns its child into a separate articulation root. By default the tool therefore re-parents such joints (when the child has mass) to the nearest massive fixed-connected ancestor, or else to the first massive link of the massless cluster, composing the joint origin so poses and TF frame names are unchanged. One line is logged per joint. Disable it with `import: {fix_massless_parents: false}` in the YAML. This works on all supported versions and uses a temporary URDF copy next to the original.

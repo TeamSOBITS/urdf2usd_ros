@@ -107,6 +107,7 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
    ros_package_paths:
      my_description: /path/to/my_description
    ```
+   URDFが使用するすべての`package://`（メッシュやテクスチャ．センサーやサードパーティの記述パッケージも含む）は，YAMLに記載するか検出可能である必要があります．YAMLにないパッケージは`ament_index`，次に`$AMENT_PREFIX_PATH` / `$COLCON_PREFIX_PATH` / `$ROS_PACKAGE_PATH`（`share/<pkg>`）から探索されるため，ROSをsourceしなくてもこれらの環境変数を設定すれば十分です．解決できないパッケージごとに`WARNING: Unresolved package://<pkg> (N meshes: ...)`を表示してインポートを中止します（`import: {allow_missing_meshes: true}`で続行可能）．
    5.xでは`package://`を書き換えたURDFの一時コピーを使用し（変換後に削除），6.xではインポータの`ros_package_paths`に渡されます．
 
    **質量のない親リンク:** Isaac 6のインポータは，親リンクに`<inertial>`がない固定ジョイントをワールドに固定し，その子リンクを別のアーティキュレーションルートにしてしまいます．そのため本ツールは，子リンクが質量を持つ場合，そのジョイントの親を，固定結合でつながった最も近い質量を持つ祖先（なければ質量のないクラスタ内で最初の質量を持つリンク）に付け替えます．ジョイントのoriginを合成するため，姿勢とTFフレーム名は変わりません．付け替えたジョイントごとに1行ログを出力します．YAMLに`import: {fix_massless_parents: false}`を指定すると無効になります．すべての対応バージョンで動作し，元URDFの隣に一時コピーを作成して処理します．
