@@ -29,12 +29,15 @@ from utils.isaac_ros2 import create_ros2_bridge
 
 def main():
     parser = argparse.ArgumentParser(description="Convert ROS URDF to Isaac Sim USD with Physics/Sensor configuration.")
-    parser.add_argument("--robot", required=True, help="Path to the drive/sensor YAML config")
+    parser.add_argument("--robot", help="Name of the drive/sensor YAML in the config folder (without extension)")
+    parser.add_argument("--config", help="Explicit YAML path (overrides --robot)")
     
     args = parser.parse_args()
 
     # Validate Paths
-    robot_config_path = os.path.join(current_dir, "..", "config", args.robot+".yaml")
+    if not (args.robot or args.config):
+        parser.error("one of --robot or --config is required")
+    robot_config_path = args.config or os.path.join(current_dir, "..", "config", args.robot+".yaml")
     if not os.path.exists(robot_config_path):
         print(f"Error: Robot file not found in config folder: {args.robot}")
         sys.exit(1)

@@ -1,10 +1,10 @@
 files_path:
-  urdf: /home/rg-station-04-keith/docker_containers/jazzy_sobit_home_2_moveit_ws/src/sobit_home/sobit_home_description/robots/sobit_home_robot.urdf
-  usd: /home/rg-station-04-keith/docker_containers/jazzy_sobit_home_2_moveit_ws/src/urdf2usd_ros/output/sobit_home.usd
+  urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE/sobit_home_robot.urdf
+  usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE/sobit_home.usd
 
-# Maps package:// URLs when ROS is not sourced (required on Isaac Sim 6.x without ament_index)
+# Maps package:// URLs when ROS is not sourced (needed on Isaac Sim 6.x without ament_index)
 ros_package_paths:
-  sobit_home_description: /home/rg-station-04-keith/docker_containers/jazzy_sobit_home_2_moveit_ws/src/sobit_home/sobit_home_description
+  sobit_home_description: /ABSOLUTE/PATH/TO/sobit_home_description
 
 default_drive:
   stiffness: 8000.0

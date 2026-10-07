@@ -105,7 +105,7 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
    `ros_package_paths`は，`package://`を解決するためのパッケージ名と絶対パスの対応表です．
    ```yaml
    ros_package_paths:
-     sobit_home_description: /path/to/sobit_home_description
+     my_description: /path/to/my_description
    ```
    5.xでは`package://`を書き換えたURDFの一時コピーを使用し（変換後に削除），6.xではインポータの`ros_package_paths`に渡されます．
 
@@ -155,18 +155,19 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 
 ロボットを変換し，結果（アーティキュレーション，自由度数，ドライブゲイン，センサー，OmniGraphノード型，120フレームの物理演算，ROS 2コンテキスト）を検証します．Isaac SimのPython環境で実行してください．
 ```sh
-$ python3 tests/convert_and_check.py --robot sobit_home
-# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot sobit_home
+$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH]
+# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...
 ```
 PASS/FAILの表を表示し，失敗があれば非ゼロで終了します．
+マシン固有のパスはコミットするYAMLに含めず，`--urdf`，`--usd`，`--package-path`（複数指定可）で渡すか，Git管理外の`config/{robot}.local.yaml`で上書きしてください（同じ構造で`files_path`や`ros_package_paths`のみ記述でき，コミット済みYAMLにマージされます）．`scripts/urdf2usd_ros.py`は`--config PATH`も受け付けます．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
 
 ### ロボット側の既知の問題
 
-- **SOBIT HOMEの`plate_cover_joint`:** 親が質量のない`base_footprint`のため，`plate_cover_link`（1.5 kg）が2つ目のアーティキュレーションルートとなり，ワールドに固定されます（120フレームのheadless実行で，カバーはz=0.496のままベースは0.309から0.413へ移動）．`sobit_home_description`側で`plate_cover_joint`の親を`plate_middle_link`に変更し，`xyz="0 0 0.2249"`（0.496258 − 0.271358）としてください．`base_link`にはinertialがないため，`base_link`への変更では解決しません．
-- **TFに含まれない質量のないフレーム:** `base_footprint`，`base_link`，`lidar_merged_laser`はアーティキュレーションに含まれないため，生成されたTFグラフはこれらを配信しません．`robot_state_publisher`を併用する（ROSの通常構成）か，静的変換を追加してください．
+- **質量のない親リンク下の固定ジョイント:** 親リンクに`<inertial>`がない固定ジョイント（例：`base_footprint`のようなフレーム）は，Isaac 6のインポータによってワールドに固定され，その子リンクはロボットに追従しない別のアーティキュレーションルートになります．このようなジョイントは，慣性を持つ最も近いリンクを親にする（ジョイントのoriginも調整）か，親リンクにinertialを追加してください．
+- **TFに含まれない質量のないフレーム:** 質量のないフレームはアーティキュレーションに含まれないため，生成されたTFグラフはこれらを配信しません．`robot_state_publisher`を併用する（ROSの通常構成）か，静的変換を追加してください．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -175,7 +176,7 @@ PASS/FAILの表を表示し，失敗があれば非ゼロで終了します．
 ## マイルストーン
 
 - [ ] 複数のモバイルベースコントローラのサポート
-- [ ] スワーブ駆動ベースのサポート（`sobit_home.yaml`では`mobile_base`を無効化．差動コントローラのグラフは適用不可）（TODO `swerve`）
+- [ ] スワーブ駆動ベースのサポート（差動コントローラのグラフは適用不可．`mobile_base`は無効のままにする）（TODO `swerve`）
 - [ ] YAMLパラメータの最小化（URDFからの自動検出）
 - [ ] TF Staticトピックの配信
 - [ ] カスタムQoS設定のサポート

@@ -105,7 +105,7 @@ The backend is chosen automatically from the installed `isaacsim` version ([isaa
    `ros_package_paths` maps package names to absolute directories and is used to resolve `package://` URLs:
    ```yaml
    ros_package_paths:
-     sobit_home_description: /path/to/sobit_home_description
+     my_description: /path/to/my_description
    ```
    On 5.x the URDF is copied with `package://` rewritten (the copy is deleted afterwards); on 6.x the mapping is passed to the importer as `ros_package_paths`.
 
@@ -155,18 +155,19 @@ Before running complex simulations, it is good practice to visualize and test th
 
 Convert a robot and check the result (articulation, DOF count, drive gains, sensors, OmniGraph node types, 120 physics frames, ROS 2 context). Run it with the Isaac Sim Python environment:
 ```sh
-$ python3 tests/convert_and_check.py --robot sobit_home
-# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot sobit_home
+$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH]
+# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...
 ```
 It prints a PASS/FAIL table and exits non-zero on failure.
+Machine-specific paths do not belong in the committed YAML: pass them with `--urdf`, `--usd` and `--package-path` (repeatable), or put them in a git-ignored `config/{robot}.local.yaml` overlay (same structure, e.g. only `files_path` and `ros_package_paths`; it is merged over the committed YAML). `scripts/urdf2usd_ros.py` also accepts `--config PATH`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
 ### Known robot-side issues
 
-- **SOBIT HOME `plate_cover_joint`:** its parent is `base_footprint` (a massless frame), so `plate_cover_link` (1.5 kg) becomes a second articulation root pinned to the world while the robot moves (in a 120-frame headless run the cover stayed at z=0.496 while the base rose from 0.309 to 0.413). Fix in `sobit_home_description`: re-parent `plate_cover_joint` to `plate_middle_link` with `xyz="0 0 0.2249"` (0.496258 − 0.271358); re-parenting to `base_link` does not help because `base_link` has no inertial.
-- **Massless frames in TF:** `base_footprint`, `base_link` and `lidar_merged_laser` are not part of the articulation, so the generated TF graph does not publish them. Run `robot_state_publisher` alongside (as the ROS stack normally does) or add static transforms.
+- **Fixed joint under a massless parent:** a fixed joint whose parent link has no `<inertial>` (e.g. a `base_footprint`-style frame) is anchored to the world by the Isaac 6 importer, and its child becomes a separate articulation root that does not follow the robot. Parent such joints to the nearest link that has inertia (adjust the joint origin accordingly), or give the parent link an inertial.
+- **Massless frames in TF:** massless frames are not part of the articulation, so the generated TF graph does not publish them. Run `robot_state_publisher` alongside (as the ROS stack normally does) or add static transforms.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -175,7 +176,7 @@ It prints a PASS/FAIL table and exits non-zero on failure.
 ## Milestone
 
 - [ ] Support multiple mobile base controllers
-- [ ] Swerve drive base (`sobit_home.yaml` keeps `mobile_base` disabled; the differential controller graph does not apply) (TODO `swerve`)
+- [ ] Swerve drive base (the differential controller graph does not apply; keep `mobile_base` disabled) (TODO `swerve`)
 - [ ] Minimize YAML file parameters (auto-detect from URDF)
 - [ ] Publish TF Static topic
 - [ ] Support for custom QoS settings

@@ -22,9 +22,46 @@ def _arg(name, default):
 
 # Convert in a child process (the real CLI): re-opening a stage whose graphs were just built
 # in the same Kit process crashes omni.graph.core on 6.1.
-_robot = _arg("--robot", "sobit_home")
-_conv = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "urdf2usd_ros.py"), "--robot", _robot],
+_robot = _arg("--robot", None)
+if not _robot:
+    sys.exit("usage: convert_and_check.py --robot NAME [--urdf F] [--usd F] [--package-path NAME=PATH]")
+
+def _merge(dst, src):
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _merge(dst[k], v)
+        else:
+            dst[k] = v
+
+def load_config():
+    """config/<robot>.yaml, overlaid by git-ignored config/<robot>.local.yaml, then CLI overrides."""
+    with open(os.path.join(ROOT, "config", _robot + ".yaml")) as f:
+        cfg = yaml.safe_load(f)
+    local = os.path.join(ROOT, "config", _robot + ".local.yaml")
+    if os.path.exists(local):
+        with open(local) as f:
+            _merge(cfg, yaml.safe_load(f) or {})
+    if "--urdf" in sys.argv:
+        cfg["files_path"]["urdf"] = _arg("--urdf", None)
+    if "--usd" in sys.argv:
+        cfg["files_path"]["usd"] = _arg("--usd", None)
+    for i, a in enumerate(sys.argv):
+        if a == "--package-path":
+            name, path = sys.argv[i + 1].split("=", 1)
+            cfg.setdefault("ros_package_paths", {})[name] = path
+    return cfg
+
+import tempfile
+CFG = load_config()
+for _k in ("urdf", "usd"):
+    if "/ABSOLUTE/" in CFG["files_path"][_k]:
+        sys.exit(f"files_path.{_k} is a placeholder: pass --{_k}, or create config/{_robot}.local.yaml")
+_tmp_cfg = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
+yaml.safe_dump(CFG, _tmp_cfg)
+_tmp_cfg.close()
+_conv = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "urdf2usd_ros.py"), "--config", _tmp_cfg.name],
                        capture_output=True, text=True)
+os.remove(_tmp_cfg.name)
 CONVERT_OK = _conv.returncode == 0 and "SUCCESS" in _conv.stdout
 
 from isaacsim import SimulationApp
@@ -53,12 +90,14 @@ def _log_cb(source, level, filename, line, message):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--robot", default="sobit_home")
+    ap.add_argument("--robot", required=True)
     ap.add_argument("--frames", type=int, default=120)
+    ap.add_argument("--urdf", help="override files_path.urdf")
+    ap.add_argument("--usd", help="override files_path.usd")
+    ap.add_argument("--package-path", action="append", metavar="NAME=PATH", help="override ros_package_paths entry (repeatable)")
     args = ap.parse_args()
 
-    with open(os.path.join(ROOT, "config", args.robot + ".yaml")) as f:
-        cfg = yaml.safe_load(f)
+    cfg = CFG
     carb.logging.acquire_logging().add_logger(_log_cb)
     print(f"Isaac Sim {'.'.join(map(str, VERSION))} (IS_6={IS_6})")
 
@@ -104,7 +143,7 @@ def main():
         k, d = api.GetStiffnessAttr().Get(), api.GetDampingAttr().Get()
         if abs(k - jc.get("stiffness", dd.get("stiffness", 1e4))) > 1e-6 or abs(d - jc.get("damping", dd.get("damping", 100.0))) > 1e-6:
             bad.append(f"{jn}:{k}/{d}")
-    sample = {j: (cfg["joints"][j]["stiffness"], cfg["joints"][j]["damping"]) for j in list(cfg.get("joints", {}))[:1] + [j for j in cfg.get("joints", {}) if "wheel_drive" in j][:1]}
+    sample = {j: (cfg["joints"][j]["stiffness"], cfg["joints"][j]["damping"]) for j in list(cfg.get("joints", {}))[:1] + list(cfg.get("joints", {}))[-1:]}
     check("drive gains", not bad, bad[:3] or f"{len(cfg.get('joints', {}))} joints OK, e.g. {sample}")
 
     # --- sensors ---
