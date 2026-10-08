@@ -149,7 +149,7 @@ YAMLに`robot_descriptor: <robot_id>`を書くと，ロボット固有の情報�
 ```sh
 $ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
 ```
-`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は24/24でパスします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）．
+`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は24/24でパスします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）． `config/sobit_light.yaml`はSOBIT LIGHT用の同形式の設定です（Kachaka差動駆動ベース，`ros2.mobile_base`グラフ，URDFは`enable_gz:=True`で生成し`file://`メッシュパスを`package://`に置換）．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
