@@ -60,6 +60,7 @@ import carb.logging
 from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdUtils
 
 from utils.isaac_version import VERSION, IS_6
+from utils.isaac_world import add_clock_graph, ensure_root_physics_scene
 from utils.isaac_wrappers import lidar_implementation
 from utils.initial_pose import clamp_to_limits, initial_pose, joint_state_attr, usd_position
 
@@ -229,6 +230,7 @@ def main():
     check("TF/JointState topology", want_t <= types or not IS_6, sorted(want_t - types) or "ComputeTransformTree + ReadJointState")
 
     # --- physics frames ---
+    ensure_root_physics_scene(stage)  # robot assets carry no scene; in memory only, never saved
     # Ground in the session layer only (never saved into the converted USD) so hold/step run with contact.
     with Usd.EditContext(stage, stage.GetSessionLayer()):
         bb = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy])
@@ -340,7 +342,10 @@ def main():
     for _ in range(30):
         app.update()
     ctx_ok, msgs = None, []
-    for g in graphs:
+    add_clock_graph(stage, domain_id=ros.get("domain_id", 0), use_domain_id_env=ros.get("use_domain_id_env", False))
+    for _ in range(30):
+        app.update()
+    for g in [*graphs, stage.GetPrimAtPath("/World/ROS2_Clock")]:
         graph = og.Controller.graph(g.GetPath().pathString)
         for n in graph.get_nodes():
             tn = n.get_type_name()
