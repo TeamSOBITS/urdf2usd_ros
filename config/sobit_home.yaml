@@ -1,4 +1,8 @@
+# Robot facts (namespace, topics, frames, controllers, sensor streams) come from the descriptor
+robot_descriptor: sobit_home
+
 files_path:
+  # urdf left as a placeholder: resolved from the descriptor (<sobit_home_description share>/robots/...)
   urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE/sobit_home_robot.urdf
   usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE/sobit_home.usd
 
@@ -32,106 +36,51 @@ joints:
     stiffness: 0.0
     damping: 10.0
 
+# Isaac-only parameters, keyed by descriptor sensor names; frames/topics/size/rate are filled from the descriptor
 sensors:
   head_camera:
-    type: "camera"
-    parent_link: "head_camera_color_optical_frame"
     horizontal_aperture: 20.955
     vertical_aperture: 11.78
     focal_length: 15.0
     clipping_range: [0.1, 20.0]
     rotation: [180, 0, 0]
     visible: false
-    update_rate: 30.0 # Hz
-    image_width: 640
-    image_height: 480
-    rgb:
-      enabled: true
-      topic: "head_camera/color"
-    depth:
-      enabled: true
-      topic: "head_camera/depth"
-    pcl:
-      enabled: true
-      topic: "head_camera/depth/points"
 
-  lidar:
-    type: "lidar"
-    parent_link: "lidar_merged_laser"
+  # Calibrated 640x480 mode, HFOV 106.1 deg (sobit_home hand-cam-sim-parity): f = 20.955 / (2 tan(53.05 deg))
+  hand_left_camera:
+    horizontal_aperture: 20.955
+    vertical_aperture: 15.716
+    focal_length: 7.881
+    clipping_range: [0.01, 20.0]
+    rotation: [180, 0, 0]
+    visible: false
+
+  hand_right_camera:
+    horizontal_aperture: 20.955
+    vertical_aperture: 15.716
+    focal_length: 7.881
+    clipping_range: [0.01, 20.0]
+    rotation: [180, 0, 0]
+    visible: false
+
+  lidar_merged:
     implementation: "rtx"
     profile: "Example_Rotary_2D"
-    topic_lidar: "scan"
 
-  imu_sensor:
-    type: "imu"
-    parent_link: "head_camera_IMU_frame"
+  head_camera_imu:
     read_gravity: true
     use_latest_data: false
     publish_angular_velocity: true
     publish_linear_acceleration: true
     publish_orientation: true
     update_rate: 100.0 # Hz
-    topic_imu: "imu"
 
 ros2:
   enabled: true
   domain_id: 0
-  namespace: ""
   publish_tf: true
   publish_joint_states: true
-  topic_joint_states: "joint_states"
 
   # Swerve base: the DifferentialController graph does not apply (TODO swerve)
   mobile_base:
     enabled: false
-
-  controllers:
-    arm_left_controller:
-      topic: "arm_left_position_controller"
-      type: "position"
-      joints:
-        - "arm_left_shoulder_tilt_joint"
-        - "arm_left_upper_roll_joint"
-        - "arm_left_upper_flex_joint"
-        - "arm_left_elbow_joint"
-        - "arm_left_lower_flex_joint"
-        - "arm_left_wrist_tilt_joint"
-        - "arm_left_wrist_roll_joint"
-    arm_right_controller:
-      topic: "arm_right_position_controller"
-      type: "position"
-      joints:
-        - "arm_right_shoulder_tilt_joint"
-        - "arm_right_upper_roll_joint"
-        - "arm_right_upper_flex_joint"
-        - "arm_right_elbow_joint"
-        - "arm_right_lower_flex_joint"
-        - "arm_right_wrist_tilt_joint"
-        - "arm_right_wrist_roll_joint"
-    head_controller:
-      topic: "head_position_controller"
-      type: "position"
-      joints:
-        - "head_pan_joint"
-        - "head_tilt_joint"
-    lift_controller:
-      topic: "body_lift_position_controller"
-      type: "position"
-      joints:
-        - "body_lift_joint"
-    wheel_steer_controller:
-      topic: "wheel_steer_position_controller"
-      type: "position"
-      joints:
-        - "wheel_steer_f_l_joint"
-        - "wheel_steer_f_r_joint"
-        - "wheel_steer_b_l_joint"
-        - "wheel_steer_b_r_joint"
-    wheel_drive_controller:
-      topic: "wheel_drive_velocity_controller"
-      type: "velocity"
-      joints:
-        - "wheel_drive_f_l_joint"
-        - "wheel_drive_f_r_joint"
-        - "wheel_drive_b_l_joint"
-        - "wheel_drive_b_r_joint"
