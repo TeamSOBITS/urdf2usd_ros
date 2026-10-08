@@ -137,6 +137,23 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
 
+### ロボットディスクリプタ
+
+YAMLに`robot_descriptor: <robot_id>`を書くと，ロボット固有の情報を共有の`<robot_id>.robot.yaml`（[sobits_robot_descriptor](../sobits_robot_descriptor)）から取得します：`ros2.namespace`，`ros2.topic_joint_states`，`ros2.controllers`，`files_path.urdf`（プレースホルダーのときのみ`<description share>/<urdf.urdf>`），および各`sensors.<name>`の`type`，`parent_link`，`frame_id`（オプティカルフレーム），`image_width/height`，`update_rate`，`rgb`/`depth`/`pcl`とLiDAR/IMUのトピックです．YAMLに明示した値が常に優先されます．`sensors`はディスクリプタのcamera/lidar/imu名をキーとし，Isaac専用のパラメータ（アパーチャ，クリッピング，回転，LiDARプロファイル，IMUフラグ）のみを記述します．未知の名前はディスクリプタのセンサー一覧を表示して中断し，`requires`で除外されたセンサー（例：`--xacro-arg head_cam_type=realsense`のOrbbec IMU）は通知を出して除外されます．キーのない設定は従来どおり動作します．
+
+- **解決順序：** `--descriptor ID|PATH`（なければ`robot_descriptor`キー）．IDは，既存のファイルパス，`$SOBITS_ROBOT_DESCRIPTOR_PATH`（コロン区切りのファイル／ディレクトリ），`ament_index`，`$AMENT_PREFIX_PATH` / `$COLCON_PREFIX_PATH`の順に探します．
+- **ローダーのimport（ROS不要）：** venvにインストール（`uv pip install -e <src>/sobits_robot_descriptor`），または`$SOBITS_ROBOT_DESCRIPTOR_PYTHONPATH`，amentプレフィックス，隣のチェックアウト`../sobits_robot_descriptor`．
+- **バリアント：** `--xacro-arg K=V`（複数指定可）でディスクリプタのバリアント（例：`head_cam_type`）を選択します．
+- **コントローラ：** `ros2.controllers.<name>.topic`は関節状態サブスクライバが使うコントローラ名（`body_position_controller`など．完全なトピック名ではありません）で，`<name>`はグループ名（`head`，`body`，`arm_left`，...，`wheel_drive`），`type`はコントローラの種類です．
+
+```sh
+$ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
+```
+`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は24/24でパスします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）．
+
+<p align="right">(<a href="#readme-top">上に戻る</a>)</p>
+
+
 ### 関節ドライブゲイン
 
 YAMLのゲインはSI単位です（回転関節: N·m/rad，N·m·s/rad，直動関節: N/m，N·s/m）．USDは回転ゲインを度単位で保持するため，書き込み時に ×π/180 で変換します．関節ごとにSI値，USD値，ゲインから求まる固有振動数が出力されます．
@@ -170,13 +187,13 @@ YAMLのゲインはSI単位です（回転関節: N·m/rad，N·m·s/rad，直�
 
 ロボットを変換し，結果（アーティキュレーション，自由度数，ドライブゲイン，センサー，OmniGraphノード型，120フレームの物理演算，ROS 2コンテキスト）を検証します．Isaac SimのPython環境で実行してください．
 ```sh
-$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--skip-step-test]
+$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--descriptor ID|PATH] [--xacro-arg K=V] [--skip-step-test]
 # Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...
 ```
 PASS/FAILの表を表示し，失敗があれば非ゼロで終了します．
 動的チェックは（USDには保存されない）セッションレイヤー上の地面で実行します：`hold pose at zero target`，`step tracking`（位置駆動の各自由度を0.3 rad / 0.1 mだけ動かし，0.02 rad / 0.01 m以内で追従，他の自由度は0.03 rad以内），`mimic joints coupled`（URDFの`<mimic>`従動関節が主関節に20%以内で追従），`base stays put`（保持中のルート移動0.02 m未満，ステップ全体で0.10 m未満）．
 `--skip-step-test`でステップとmimicのチェックを省略できます（約41x180フレーム分）．
-マシン固有のパスはコミットするYAMLに含めず，`--urdf`，`--usd`，`--package-path`（複数指定可）で渡すか，Git管理外の`config/{robot}.local.yaml`で上書きしてください（同じ構造で`files_path`や`ros_package_paths`のみ記述でき，コミット済みYAMLにマージされます）．`scripts/urdf2usd_ros.py`は`--config PATH`も受け付けます．
+マシン固有のパスはコミットするYAMLに含めず，`--urdf`，`--usd`，`--package-path`（複数指定可，`scripts/urdf2usd_ros.py`でも可）で渡すか，Git管理外の`config/{robot}.local.yaml`で上書きしてください（同じ構造で`files_path`や`ros_package_paths`のみ記述でき，コミット済みYAMLにマージされます）．`scripts/urdf2usd_ros.py`は`--config PATH`も受け付けます．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 

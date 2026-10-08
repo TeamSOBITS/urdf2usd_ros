@@ -1,3 +1,10 @@
+# OPTIONAL robot descriptor (<robot>.robot.yaml, see sobits_robot_descriptor): with it, ros2.namespace,
+# ros2.topic_joint_states, ros2.controllers, files_path.urdf and each sensor's type/parent_link/frame_id/topics/
+# image size/rate are filled from it (explicit values below win). `sensors` is then keyed by descriptor sensor
+# names and holds only the Isaac-only parameters (apertures, clipping, rotation, lidar profile, IMU flags),
+# see config/sobit_home.yaml. Without this key the legacy, fully explicit form below is used.
+# robot_descriptor: my_robot   # id, or path to a .robot.yaml
+
 files_path:
   urdf: /ABSOLUTE/PATH/TO/INPUT/URDF/FILE.urdf
   usd: /ABSOLUTE/PATH/TO/OUTPUT/USD/FILE.usd

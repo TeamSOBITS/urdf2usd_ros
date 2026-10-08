@@ -137,6 +137,23 @@ The backend is chosen automatically from the installed `isaacsim` version ([isaa
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
+### Robot descriptor
+
+A YAML with `robot_descriptor: <robot_id>` takes the robot facts from the shared `<robot_id>.robot.yaml` of [sobits_robot_descriptor](../sobits_robot_descriptor) instead of repeating them: `ros2.namespace`, `ros2.topic_joint_states`, `ros2.controllers`, `files_path.urdf` (`<description share>/<urdf.urdf>`, only while it is a placeholder) and, for every `sensors.<name>`, `type`, `parent_link`, `frame_id` (optical frame), `image_width/height`, `update_rate` and the `rgb`/`depth`/`pcl` and lidar/IMU topics. Explicit YAML values always win. `sensors` is keyed by descriptor camera/lidar/imu names and only holds the Isaac-only parameters (apertures, clipping, rotation, lidar profile, IMU flags); an unknown name aborts and lists the descriptor's sensors, and a sensor removed by a `requires` clause (e.g. the Orbbec IMU with `--xacro-arg head_cam_type=realsense`) is dropped with a note. Configs without the key behave as before.
+
+- **Resolution order:** `--descriptor ID|PATH` (else the `robot_descriptor` key); an id is looked up in an existing file path, `$SOBITS_ROBOT_DESCRIPTOR_PATH` (colon-separated files or directories), `ament_index`, then `$AMENT_PREFIX_PATH` / `$COLCON_PREFIX_PATH`.
+- **Loader import (no ROS needed):** installed in the venv (`uv pip install -e <src>/sobits_robot_descriptor`), else `$SOBITS_ROBOT_DESCRIPTOR_PYTHONPATH`, ament prefixes, or the sibling checkout `../sobits_robot_descriptor`.
+- **Variants:** `--xacro-arg K=V` (repeatable) selects the descriptor variant, e.g. `head_cam_type`.
+- **Controllers:** `ros2.controllers.<name>.topic` is the controller name consumed by the joint-state subscriber (`<controller>` such as `body_position_controller`, not a full topic); `<name>` is the group name (`head`, `body`, `arm_left`, ..., `wheel_drive`) and `type` is the controller kind.
+
+```sh
+$ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
+```
+`config/sobit_home.yaml` is the reference. SOBIT HOME checks in `tests/convert_and_check.py` pass 24/24 (head camera, both hand cameras, merged lidar and IMU included).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
 ### Joint drive gains
 
 Gains in the YAML are SI: N·m/rad and N·m·s/rad for revolute joints, N/m and N·s/m for prismatic ones. USD stores angular gains per degree, so they are converted (×π/180) when written; each joint is printed with its SI values, the USD values and the natural frequency the gains imply.
@@ -170,13 +187,13 @@ Before running complex simulations, it is good practice to visualize and test th
 
 Convert a robot and check the result (articulation, DOF count, drive gains, sensors, OmniGraph node types, 120 physics frames, ROS 2 context). Run it with the Isaac Sim Python environment:
 ```sh
-$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--skip-step-test]
+$ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--descriptor ID|PATH] [--xacro-arg K=V] [--skip-step-test]
 # Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...
 ```
 It prints a PASS/FAIL table and exits non-zero on failure.
 The dynamic checks run on a session-layer ground plane (not saved into the USD): `hold pose at zero target`, `step tracking` (every position-driven DoF steps by 0.3 rad / 0.1 m and tracks within 0.02 rad / 0.01 m while the others stay within 0.03 rad), `mimic joints coupled` (URDF `<mimic>` followers follow their leader within 20%) and `base stays put` (root drift under 0.02 m while holding, 0.10 m over the step sequence).
 `--skip-step-test` skips the step and mimic checks (about 41x180 extra frames).
-Machine-specific paths do not belong in the committed YAML: pass them with `--urdf`, `--usd` and `--package-path` (repeatable), or put them in a git-ignored `config/{robot}.local.yaml` overlay (same structure, e.g. only `files_path` and `ros_package_paths`; it is merged over the committed YAML). `scripts/urdf2usd_ros.py` also accepts `--config PATH`.
+Machine-specific paths do not belong in the committed YAML: pass them with `--urdf`, `--usd` and `--package-path` (repeatable, also on `scripts/urdf2usd_ros.py`), or put them in a git-ignored `config/{robot}.local.yaml` overlay (same structure, e.g. only `files_path` and `ros_package_paths`; it is merged over the committed YAML by both the CLI and the test). `scripts/urdf2usd_ros.py` also accepts `--config PATH`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
