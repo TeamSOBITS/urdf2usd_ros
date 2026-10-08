@@ -34,8 +34,17 @@ def usd_position(value, angular):
 def joint_state_attr(prim, api_type):
     return prim.GetAttribute(f"state:{api_type}:physics:position")
 
+def clamp_to_limits(prim, v):
+    """Clamp a USD-unit value to the joint's finite lower/upper limits."""
+    for key, pick in (("lowerLimit", max), ("upperLimit", min)):
+        a = prim.GetAttribute(f"physics:{key}")
+        lim = a.Get() if a else None
+        if lim is not None and math.isfinite(lim):
+            v = pick(v, lim)
+    return v
+
 def apply_initial_pose_to_stage(stage, robot_prim_path, pose):
-    """Write drive target and joint state (degrees for angular) for each pose joint; velocity-driven joints are skipped."""
+    """Write drive target, joint state and Newton position (degrees for angular, clamped to limits) per pose joint; velocity-driven joints are skipped."""
     print("--- Applying Initial Pose ---")
     joints = {p.GetName(): p for p in Usd.PrimRange(stage.GetPrimAtPath(robot_prim_path)) if p.IsA(UsdPhysics.Joint)}
     for name, value in pose.items():
@@ -50,13 +59,19 @@ def apply_initial_pose_to_stage(stage, robot_prim_path, pose):
             if drive.GetStiffnessAttr().Get() == 0:
                 print(f"  - Joint: {name} | velocity-driven, initial pose skipped")
                 break
-            v = usd_position(value, api_type == "angular")
+            v0 = usd_position(value, api_type == "angular")
+            v = clamp_to_limits(prim, v0)
+            if abs(v - v0) > 1e-9:
+                print(f"  ~ Joint: {name} | {api_type} | {v0:.6g} outside limits, clamped to {v:.6g}")
             (drive.GetTargetPositionAttr() or drive.CreateTargetPositionAttr()).Set(v)
             prim.AddAppliedSchema(f"PhysicsJointStateAPI:{api_type}")
             attr = joint_state_attr(prim, api_type)
             if not attr:
                 attr = prim.CreateAttribute(f"state:{api_type}:physics:position", Sdf.ValueTypeNames.Float)
             attr.Set(v)
+            nattr = prim.GetAttribute(f"newton:{api_type}:position") or prim.CreateAttribute(
+                f"newton:{api_type}:position", Sdf.ValueTypeNames.Float)
+            nattr.Set(v)
             print(f"  + Joint: {name} | {api_type} | position={value:.6g} (SI) | USD {v:.6g}")
             break
         else:

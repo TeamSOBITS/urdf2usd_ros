@@ -165,7 +165,7 @@ Gains in the YAML are SI: N·m/rad and N·m·s/rad for revolute joints, N/m and 
 
 ### Initial pose
 
-Isaac loads every joint at the URDF zero pose, which can put parts of the robot below the floor. The initial pose is taken from the URDF `<ros2_control>` block (`<state_interface name="position">` `initial_value`, rad or m) and then overridden or extended by the optional top-level `initial_pose: {joint: value}` in the YAML (SI units). Angular values are converted to degrees for USD, and each value is written both as the drive target and as the joint state (`PhysicsJointStateAPI`), so the robot starts there and holds it. Velocity-driven joints are skipped and unknown joints give a warning.
+Isaac loads every joint at the URDF zero pose, which can put parts of the robot below the floor. The initial pose is taken from the URDF `<ros2_control>` block (`<state_interface name="position">` `initial_value`, rad or m) and then overridden or extended by the optional top-level `initial_pose: {joint: value}` in the YAML (SI units). Angular values are converted to degrees for USD, and each value is written both as the drive target and as the joint state (`PhysicsJointStateAPI`), so the robot starts there and holds it; the same value is also written as `newton:angular:position` / `newton:linear:position`, which is where Newton's USD importer reads the start position. Values outside the joint limits (`physics:lowerLimit`/`upperLimit`) are clamped to them with a printed note, e.g. a URDF `initial_value` of -1.571 rad is just past a -90° limit. Velocity-driven joints are skipped and unknown joints give a warning.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

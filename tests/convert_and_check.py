@@ -61,7 +61,7 @@ from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdUtils
 
 from utils.isaac_version import VERSION, IS_6
 from utils.isaac_wrappers import lidar_implementation
-from utils.initial_pose import initial_pose, joint_state_attr, usd_position
+from utils.initial_pose import clamp_to_limits, initial_pose, joint_state_attr, usd_position
 
 RESULTS = []
 ERRORS = []
@@ -133,10 +133,11 @@ def main():
                 continue
             if drive.GetStiffnessAttr().Get() == 0:
                 break
-            want = usd_position(v, t == "angular")
+            want = clamp_to_limits(prim, usd_position(v, t == "angular"))
             tgt, st = drive.GetTargetPositionAttr().Get(), joint_state_attr(prim, t).Get()
-            if tgt is None or st is None or abs(tgt - want) > 1e-4 or abs(st - want) > 1e-4:
-                bad.append(f"{n}: want {want:.4f}, target {tgt}, state {st}")
+            nw = prim.GetAttribute(f"newton:{t}:position").Get()
+            if None in (tgt, st, nw) or max(abs(tgt - want), abs(st - want), abs(nw - want)) > 1e-4:
+                bad.append(f"{n}: want {want:.4f}, target {tgt}, state {st}, newton {nw}")
             break
         else:
             bad.append(f"{n}: no drive in USD")

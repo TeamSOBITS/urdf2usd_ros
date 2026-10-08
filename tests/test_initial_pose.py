@@ -5,7 +5,7 @@ import shutil
 import sys
 import tempfile
 
-from pxr import Usd, UsdPhysics
+from pxr import Gf, Sdf, Usd, UsdPhysics
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -58,8 +58,27 @@ def test_stage():
         drive = UsdPhysics.DriveAPI.Get(prim, "angular")
         assert abs(drive.GetTargetPositionAttr().Get() + 90) < 1e-4
         assert abs(prim.GetAttribute("state:angular:physics:position").Get() + 90) < 1e-4
+        assert abs(prim.GetAttribute("newton:angular:position").Get() + 90) < 1e-4
     finally:
         shutil.rmtree(tmp)
+
+def test_clamp():
+    stage = Usd.Stage.CreateInMemory()
+    stage.DefinePrim("/r", "Xform")
+    stage.SetDefaultPrim(stage.GetPrimAtPath("/r"))
+    j = UsdPhysics.RevoluteJoint.Define(stage, "/r/j")
+    j.CreateLowerLimitAttr(-90.0)
+    j.CreateUpperLimitAttr(90.0)
+    d = UsdPhysics.DriveAPI.Apply(j.GetPrim(), "angular")
+    d.CreateStiffnessAttr(1.0)
+    p = UsdPhysics.PrismaticJoint.Define(stage, "/r/p")
+    UsdPhysics.DriveAPI.Apply(p.GetPrim(), "linear").CreateStiffnessAttr(1.0)
+    apply_initial_pose_to_stage(stage, "/r", {"j": -1.571, "p": 0.5})
+    jp = j.GetPrim()
+    for a in (d.GetTargetPositionAttr(), jp.GetAttribute("state:angular:physics:position"),
+              jp.GetAttribute("newton:angular:position")):
+        assert abs(a.Get() + 90) < 1e-6, a.Get()
+    assert abs(p.GetPrim().GetAttribute("newton:linear:position").Get() - 0.5) < 1e-6
 
 if __name__ == "__main__":
     for n, f in list(globals().items()):
