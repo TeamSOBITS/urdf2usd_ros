@@ -102,6 +102,13 @@ def _raw_sensor_names(path):
         sensors = (yaml.safe_load(f) or {}).get("sensors") or {}
     return {e["name"] for kind in ("cameras", "lidars", "imus") for e in sensors.get(kind) or [] if "name" in e}
 
+def _diff_drive_cfg(desc, ctrl):
+    """Isaac cmd_vel graph settings (`ros2.mobile_base`) of a diff_drive base controller."""
+    mb = desc.mobile_base
+    return {"enabled": True, "wheel_joints": list(ctrl.joints), "wheel_radius": ctrl.wheel_radius,
+            "wheel_base": ctrl.wheel_separation, "topic_cmd_vel": ctrl.command_topic or mb.command_topic,
+            "topic_odom": mb.odom_topic, "frame_odom": desc.odom_frame, "frame_base": desc.base_frame}
+
 def apply_descriptor(cfg, descriptor=None, xacro_args=None):
     """Fill cfg from the robot descriptor without overwriting explicit values; no-op without `robot_descriptor`."""
     ref = descriptor or cfg.get("robot_descriptor")
@@ -125,7 +132,15 @@ def apply_descriptor(cfg, descriptor=None, xacro_args=None):
     ros.setdefault("namespace", desc.namespace)
     ros.setdefault("topic_joint_states", desc.joint_states_topic)
     controllers = ros.setdefault("controllers", {})
+    diff = [c for c in (desc.mobile_base.controllers if desc.mobile_base else []) if c.interface == "diff_drive"]
+    if len(diff) > 1:
+        raise SystemExit(f"Error: descriptor '{desc.robot_id}' has {len(diff)} diff_drive controllers "
+                         f"({', '.join(c.name for c in diff)}); only one is supported")
+    if diff:
+        _fill(ros.setdefault("mobile_base", {}), _diff_drive_cfg(desc, diff[0]))
     for spec in desc.controllers():
+        if spec in diff:
+            continue
         _fill(controllers.setdefault(spec.name, {}), {"topic": spec.controller, "type": spec.kind, "joints": list(spec.joints)})
 
     raw_names = _raw_sensor_names(desc.path)
