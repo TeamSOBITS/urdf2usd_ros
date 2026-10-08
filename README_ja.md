@@ -151,7 +151,7 @@ YAMLに`robot_descriptor: <robot_id>`を書くと，ロボット固有の情報�
 ```sh
 $ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
 ```
-`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は30/30でパスします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）． `config/sobit_light.yaml`はSOBIT LIGHT用の同形式の設定です（Kachaka差動駆動ベースはros2_controlの`wheel_controller`，[ros2_control](#ros2_control)参照，URDFは`enable_gz:=True`で生成し`file://`メッシュパスを`package://`に置換）．
+`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は32項目をチェックします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）．ros2_controlの2項目（`ros2_control config`，`ros2_control graph`）を追加する前は30/30でパスしており，この2項目はSOBIT HOMEではまだ実行していません． `config/sobit_light.yaml`はSOBIT LIGHT用の同形式の設定です（Kachaka差動駆動ベースはros2_controlの`wheel_controller`，[ros2_control](#ros2_control)参照，URDFは`enable_gz:=True`で生成し`file://`メッシュパスを`package://`に置換）．
 
 ### ros2_control
 
@@ -218,7 +218,7 @@ URDFのリンクごとの `<gazebo reference="LINK"><mu1>..</mu1><mu2>..</mu2></
 
 ### テスト
 
-ロボットを変換し，結果（アーティキュレーション，自由度数，ドライブゲイン，センサー，OmniGraphノード型，120フレームの物理演算，ROS 2コンテキスト）を検証します．Isaac SimのPython環境で実行してください．
+ロボットを変換し，結果（アーティキュレーション，自由度数，ドライブゲイン，センサー，OmniGraphノード型，ros2_controlのYAMLとグラフ，120フレームの物理演算，ROS 2コンテキスト）を検証します．Isaac SimのPython環境で実行してください．
 ```sh
 $ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--descriptor ID|PATH] [--xacro-arg K=V] [--skip-step-test]
 # Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...

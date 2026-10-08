@@ -151,7 +151,7 @@ The robot USD carries no `PhysicsScene` and no `/clock` publisher: the environme
 ```sh
 $ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
 ```
-`config/sobit_home.yaml` is the reference. SOBIT HOME checks in `tests/convert_and_check.py` pass 30/30 (head camera, both hand cameras, merged lidar and IMU included). `config/sobit_light.yaml` is the same form for SOBIT LIGHT (Kachaka differential base on ros2_control's `wheel_controller`, see [ros2_control](#ros2_control); URDF from `enable_gz:=True`, `file://` mesh paths rewritten to `package://`).
+`config/sobit_home.yaml` is the reference. SOBIT HOME runs 32 checks in `tests/convert_and_check.py` (head camera, both hand cameras, merged lidar and IMU included); 30/30 passed before the two ros2_control checks (`ros2_control config`, `ros2_control graph`) were added, which have not been run on SOBIT HOME yet. `config/sobit_light.yaml` is the same form for SOBIT LIGHT (Kachaka differential base on ros2_control's `wheel_controller`, see [ros2_control](#ros2_control); URDF from `enable_gz:=True`, `file://` mesh paths rewritten to `package://`).
 
 ### ros2_control
 
@@ -218,7 +218,7 @@ Before running complex simulations, it is good practice to visualize and test th
 
 ### Test
 
-Convert a robot and check the result (articulation, DOF count, drive gains, sensors, OmniGraph node types, 120 physics frames, ROS 2 context). Run it with the Isaac Sim Python environment:
+Convert a robot and check the result (articulation, DOF count, drive gains, sensors, OmniGraph node types, ros2_control YAML and graph, 120 physics frames, ROS 2 context). Run it with the Isaac Sim Python environment:
 ```sh
 $ python3 tests/convert_and_check.py --robot {YOUR_ROBOT_YAML_FILE_NAME} [--urdf FILE] [--usd FILE] [--package-path NAME=PATH] [--descriptor ID|PATH] [--xacro-arg K=V] [--skip-step-test]
 # Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/tests/convert_and_check.py --robot ...

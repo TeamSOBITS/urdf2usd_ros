@@ -62,6 +62,7 @@ from utils.isaac_version import VERSION, IS_6
 from utils.isaac_world import add_clock_graph, ensure_root_physics_scene
 from utils.isaac_wrappers import lidar_implementation
 from utils.initial_pose import clamp_to_limits, initial_pose, joint_state_attr, usd_position
+from utils import ros2_control
 
 RESULTS = []
 ERRORS = []
@@ -101,6 +102,7 @@ def main():
     # 6.1: loading a stage right after enabling the ROS 2 extensions crashes omni.graph.core;
     # a few updates in between let their startup finish.
     import utils.isaac_ros2  # noqa: F401  enables the OmniGraph/ROS 2 extensions the saved graphs need
+    ros2_control.enable()  # the ROS2_Control node's backend + the URDF prune patch, before Play
     for _ in range(10):
         app.update()
     omni.usd.get_context().open_stage(usd)
@@ -219,14 +221,35 @@ def main():
     check("graph node types", not missing, missing[:4] or "all registered")
     gnames = {g.GetName() for g in graphs}
     ros = cfg.get("ros2", {})
-    want_g = (["ROS2_TF"] if ros.get("publish_tf", True) else []) + (["ROS2_JointStates"] if ros.get("publish_joint_states", True) else []) \
-        + (["ROS2_MobileBase"] if ros.get("mobile_base", {}).get("enabled") else []) \
-        + [f"ROS2_Ctrl_{c}" for c in ros.get("controllers", {})] \
+    control_yaml, control_types, control_want, control_why = _ros2_control_expected(ros)
+    base_by_control = ros2_control.DIFF_DRIVE in control_types.values()
+    want_g = (["ROS2_TF"] if ros.get("publish_tf", True) else []) \
         + [f"ROS2_{ {'camera': 'Camera', 'lidar': 'Lidar', 'imu': 'IMU'}[s['type']] }_{n}" for n, s in cfg.get("sensors", {}).items()]
+    if control_yaml:
+        want_g += ["ROS2_Control"] + (["ROS2_MobileBase"] if ros.get("mobile_base", {}).get("enabled") and not base_by_control else [])
+    else:
+        want_g += (["ROS2_JointStates"] if ros.get("publish_joint_states", True) else []) \
+            + (["ROS2_MobileBase"] if ros.get("mobile_base", {}).get("enabled") else []) \
+            + [f"ROS2_Ctrl_{c}" for c in ros.get("controllers", {})]
     check("expected graphs", set(want_g) <= gnames, sorted(set(want_g) - gnames) or f"{len(want_g)} present")
+
+    # --- ros2_control: YAML next to the USD, one ROS2_Control graph instead of the controller graphs ---
+    if control_yaml:
+        missing_c = sorted(control_want - set(control_types))
+        check("ros2_control config", os.path.isfile(control_yaml) and not missing_c,
+              missing_c[:4] or f"{os.path.basename(control_yaml)}: {len(control_types)} controllers")
+        attr = stage.GetPrimAtPath(f"{prim_path}/ROS2_Control/ControlManager").GetAttribute("inputs:controllerConfig")
+        replaced = sorted(g for g in gnames if g.startswith("ROS2_Ctrl_") or g == "ROS2_JointStates"
+                          or (g == "ROS2_MobileBase" and base_by_control))
+        got = attr.Get() if attr else None
+        check("ros2_control graph", got == control_yaml and not replaced,
+              replaced[:3] or (f"controllerConfig {got}" if got != control_yaml else "ROS2_Control -> " + os.path.basename(got)))
+    else:
+        check("ros2_control config", True, f"skipped ({control_why})")
+        check("ros2_control graph", "ROS2_Control" not in gnames, f"skipped ({control_why})")
     types = {p.GetAttribute("node:type").Get() for p in node_prims}
-    want_t = {"isaacsim.core.nodes.IsaacComputeTransformTree", "isaacsim.sensors.physics.IsaacReadJointState"}
-    check("TF/JointState topology", want_t <= types or not IS_6, sorted(want_t - types) or "ComputeTransformTree + ReadJointState")
+    want_t = {"isaacsim.core.nodes.IsaacComputeTransformTree"} | (set() if control_yaml else {"isaacsim.sensors.physics.IsaacReadJointState"})
+    check("TF/JointState topology", want_t <= types or not IS_6, sorted(want_t - types) or " + ".join(t.split(".")[-1] for t in sorted(want_t)))
 
     # --- environment ownership, sim time, camera topics ---
     scenes = [p.GetPath().pathString for p in Usd.PrimRange(robot) if p.IsA(UsdPhysics.Scene)]
@@ -392,6 +415,22 @@ def main():
     tl.stop()
     check("no log errors", len([e for e in ERRORS if "inotify" not in e]) == 0, [e for e in ERRORS if "inotify" not in e][:3])
     return report()
+
+def _ros2_control_expected(ros):
+    """(YAML path, {controller: type}, controller names the descriptor implies, reason) of the ROS2_Control graph."""
+    control = ros.get("control") or {}
+    from utils.descriptor import load_descriptor
+    desc = load_descriptor(CFG, _arg("--descriptor", None), dict(a.split("=", 1) for a in _xacro), quiet=True)
+    why = ("ros2 disabled" if not ros.get("enabled") else "ros2.control.enabled: false" if control.get("enabled") is False
+           else "no robot_descriptor" if desc is None
+           else f"no {ros2_control.NODE_TYPE}" if not og.get_node_type(ros2_control.NODE_TYPE).is_valid() else None)
+    path = control.get("config_path")
+    if why or not path:
+        return None, {}, set(), why or "no ros2.control.config_path"
+    types = ros2_control.controller_types(path) if os.path.isfile(path) else {}
+    want = {"joint_state_broadcaster"} | {c.controller for c in desc.controllers()
+                                         if c.interface != "diff_drive" or control.get("diff_drive", True)}
+    return path, types, want, None
 
 def _base_frame():
     ref = _arg("--descriptor", None) or CFG.get("robot_descriptor")
