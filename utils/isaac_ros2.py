@@ -2,7 +2,7 @@ import os
 
 import omni.graph.core as og
 from isaacsim.core.utils.extensions import enable_extension
-from pxr import Usd, UsdPhysics, Sdf
+from pxr import Usd, UsdGeom, UsdPhysics, Sdf
 from .isaac_wrappers import lidar_implementation
 from .isaac_version import IS_6
 from . import ros2_control
@@ -104,11 +104,13 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             ("ReadContext.outputs:context", "PubTF.inputs:context"),
             ("SimTime.outputs:simulationTime", "PubTF.inputs:timeStamp"),
         ]
+        # The root link's children, not the root itself: that would publish a base_link -> base_link self transform
+        tf_targets = [c.GetPath() for c in stage.GetPrimAtPath(target_path).GetChildren() if c.IsA(UsdGeom.Xformable)]
         if use_tree:
             nodes.append(("TFTree", "isaacsim.core.nodes.IsaacComputeTransformTree"))
             values += [
                 ("TFTree.inputs:parentPrim", [Sdf.Path(target_path)]),
-                ("TFTree.inputs:targetPrims", [Sdf.Path(target_path)]),
+                ("TFTree.inputs:targetPrims", tf_targets),
             ]
             conns += [
                 # Chain publisher after compute node; parallel exec NaNs the articulation in 6.1
@@ -123,7 +125,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             conns.append(("OnTick.outputs:tick", "PubTF.inputs:execIn"))
             values += [
                 ("PubTF.inputs:parentPrim", [Sdf.Path(target_path)]),
-                ("PubTF.inputs:targetPrims", [Sdf.Path(target_path)]),
+                ("PubTF.inputs:targetPrims", tf_targets),
             ]
 
         og.Controller.edit(
@@ -629,7 +631,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("ControlManager.inputs:targetPrim", [Sdf.Path(robot_prim_path)]),
                     ("ControlManager.inputs:controllerConfig", control_yaml),
                     ("ControlManager.inputs:namespace", ros_config.get("namespace", "")),
-                    ("ControlManager.inputs:publishRobotDescription", True),
+                    # Off by default: the synthesized URDF references meshes in a host temp dir, the ROS side
+                    # serves robot_description from the description package instead
+                    ("ControlManager.inputs:publishRobotDescription", bool((ros_config.get("control") or {}).get("publish_robot_description", False))),
                     ("ControlManager.inputs:useSimTime", True),
                 ],
                 keys.CONNECT: [

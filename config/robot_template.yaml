@@ -155,6 +155,7 @@ ros2:
     # update_rate: 100 # controller_manager Hz
     # diff_drive: true # false = keep a diff_drive base on the ROS2_MobileBase graph
     # config_path: /ABSOLUTE/PATH/robot_ros2_control.yaml # default: <usd dir>/<usd stem>_ros2_control.yaml
+    # publish_robot_description: false # true latches the synthesized URDF (meshes in a host temp dir) on /<ns>/robot_description
     # controllers: # deep-merged into the generated YAML; `type` sets/adds a plugin
     #   controller_manager: {update_rate: 200}
     #   arm_position_controller: {constraints: {goal_time: 0.5}}
