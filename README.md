@@ -202,6 +202,35 @@ Machine-specific paths do not belong in the committed YAML: pass them with `--ur
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
+### MJCF export
+
+Every converted robot can also be written as a MuJoCo MJCF with the same drive gains, mimic couplings and initial pose. The USD is loaded by [Newton](https://github.com/newton-physics/newton)'s USD importer and exported by its MuJoCo solver; Isaac Sim is not needed. Requirements: `newton` (with `newton_usd_schemas`, `warp`) and `mujoco` in the Python environment (the Isaac Lab venv has both).
+
+```sh
+# right after the conversion (runs scripts/usd2mjcf.py in a separate process)
+$ python3 scripts/urdf2usd_ros.py --robot sobit_home --mjcf [PATH]
+# from an existing USD
+$ python3 scripts/usd2mjcf.py --robot sobit_home [--usd FILE] [--urdf FILE] [--mjcf FILE] [--ground]
+# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/scripts/usd2mjcf.py --robot ...
+```
+The default output is the USD path with `.xml`. `files_path.usd` and the initial pose (URDF `ros2_control` + YAML `initial_pose`) come from the same YAML as the conversion. Python API: `utils.mjcf_export.export_mjcf(usd_path, mjcf_path, initial_pose=None, ground=False, keep_prims=None)` returns the body/joint/actuator/mesh/equality counts; import `utils.mjcf_export` before opening any USD stage, since Newton's USD schemas must be registered first (otherwise the mimic joints are dropped, and the export refuses to run).
+
+- **Stripped before loading** (in memory, the USD is not modified): prims of type `OmniLidar` and `IsaacImuSensor`, every `*Graph` prim (the ROS 2 OmniGraphs) and every prim referencing an `http(s)://` or `omniverse:` asset (the RTX lidar profile), which would otherwise be a composition error. Cameras are kept (Newton ignores them); `--keep-prim PATH` keeps anything else.
+- **Contents:** bodies and joints keep the URDF link/joint names (the free base joint is `root`), one `general` position actuator per position drive (`kp`/`kv` in SI, the same values as in the USD) or velocity actuator for `stiffness: 0` joints, URDF `<mimic>` joints as `<equality><joint>`, `<compiler angle="radian">`, and a `home` keyframe (`qpos` = initial pose with the free base at the authored root transform, `ctrl` = position targets).
+- **Floor:** no ground plane is written; the consumer adds its own (`--ground` keeps one for standalone testing). The export is built against a ground so that Newton compiles collision masks that touch a default floor or object (`contype=conaffinity=1`) but not the robot itself (self-collisions off, as in the USD); without it every robot geom would get `contype=conaffinity=0`.
+- **Looks:** visual geoms are in group 1 with `rgba` from the bound USD material (`diffuseColor`, `GeomSubset` bindings included), colliders in group 3 (hidden by default in the viewer). Textures are not carried over.
+- **Meshes are inline** (`vertex`/`face` in the XML), so the file is self-contained but large: about 54 MB for SOBIT HOME and 27 MB for SOBIT LIGHT.
+- **MuJoCo versions:** the files load with MuJoCo 3.0.0, 3.8.1 and 3.12.
+
+`tests/check_mjcf.py` checks an exported file with plain MuJoCo:
+```sh
+$ python3 tests/check_mjcf.py --robot sobit_home [--usd FILE] [--mjcf FILE]
+```
+It checks the `nq`/`nv`/`nu` counts against the USD joints and drives, the actuator gains against `utils.drive_gains` (SI, 1%), the mimic equalities against the URDF, that the `home` keyframe equals the initial pose, a 2 s hold from `home` on a floor (injected if the file has none: every joint within 0.02 rad, base within 0.02 m), `rgba` on visual geoms and group 3 for colliders. SOBIT HOME and SOBIT LIGHT pass 12/12.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
 ### Known robot-side issues
 
 - **Fixed joint under a massless parent:** handled automatically (see `import.fix_massless_parents` above). If you disable it, parent such joints to the nearest link that has inertia (adjust the origin) or give the parent link an inertial; otherwise the child becomes a separate articulation root anchored to the world.

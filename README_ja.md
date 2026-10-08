@@ -202,6 +202,35 @@ PASS/FAILの表を表示し，失敗があれば非ゼロで終了します．
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
 
+### MJCFの出力
+
+変換したロボットは，同じドライブゲイン，mimic結合，初期姿勢をもつMuJoCoのMJCFとしても出力できます．USDは[Newton](https://github.com/newton-physics/newton)のUSDインポータで読み込み，そのMuJoCoソルバで出力するため，Isaac Simは不要です．Python環境に `newton`（`newton_usd_schemas`，`warp` を含む）と `mujoco` が必要です（Isaac Labのvenvには両方あります）．
+
+```sh
+# 変換の直後に出力（scripts/usd2mjcf.py を別プロセスで実行）
+$ python3 scripts/urdf2usd_ros.py --robot sobit_home --mjcf [PATH]
+# 既存のUSDから出力
+$ python3 scripts/usd2mjcf.py --robot sobit_home [--usd FILE] [--urdf FILE] [--mjcf FILE] [--ground]
+# Isaac Lab venv: cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/scripts/usd2mjcf.py --robot ...
+```
+既定の出力先はUSDのパスの拡張子を `.xml` にしたものです．`files_path.usd` と初期姿勢（URDFの `ros2_control` + YAMLの `initial_pose`）は変換と同じYAMLから取得します．Python API: `utils.mjcf_export.export_mjcf(usd_path, mjcf_path, initial_pose=None, ground=False, keep_prims=None)` はボディ・関節・アクチュエータ・メッシュ・等式拘束の数を返します．NewtonのUSDスキーマを先に登録する必要があるため，USDステージを開く前に `utils.mjcf_export` をimportしてください（順序が逆だとmimic関節が失われるため，出力はエラーで停止します）．
+
+- **読み込み前に除去するもの**（メモリ上のみ，USDは変更しません）: 型が `OmniLidar`，`IsaacImuSensor` のプリム，`*Graph` のプリム（ROS 2のOmniGraph），`http(s)://` や `omniverse:` のアセットを参照するプリム（RTX lidarのプロファイル．残すとコンポジションエラーになります）．カメラは残します（Newtonは無視します）．その他は `--keep-prim PATH` で残せます．
+- **内容:** ボディと関節はURDFのリンク名・関節名のまま（浮遊ベースの関節は `root`），位置ドライブごとに `general` の位置アクチュエータ（`kp`/`kv` はSI単位でUSDと同じ値），`stiffness: 0` の関節は速度アクチュエータ，URDFの `<mimic>` は `<equality><joint>`，`<compiler angle="radian">`，`home` キーフレーム（`qpos` は初期姿勢で浮遊ベースは記述されたルート位置，`ctrl` は位置目標）．
+- **床:** 地面は出力しません．利用側で追加してください（単体テスト用に `--ground` で残せます）．出力時は地面ありでモデルを構築するため，Newtonが生成する衝突マスクは既定の床や物体（`contype=conaffinity=1`）とは接触し，ロボット自身とは接触しません（USDと同じく自己衝突なし）．地面なしで構築すると全ジオメトリが `contype=conaffinity=0` になります．
+- **見た目:** visualジオメトリはgroup 1で，USDでバインドされたマテリアルの `diffuseColor` から `rgba` を設定します（`GeomSubset` のバインドを含む）．コライダーはgroup 3（ビューアでは既定で非表示）．テクスチャは引き継ぎません．
+- **メッシュはインライン**（XML内の `vertex`/`face`）のため，ファイル単体で完結しますがサイズが大きくなります: SOBIT HOMEで約54 MB，SOBIT LIGHTで約27 MB．
+- **MuJoCoのバージョン:** MuJoCo 3.0.0，3.8.1，3.12で読み込めることを確認済みです．
+
+`tests/check_mjcf.py` は出力したファイルを素のMuJoCoで検証します．
+```sh
+$ python3 tests/check_mjcf.py --robot sobit_home [--usd FILE] [--mjcf FILE]
+```
+USDの関節とドライブに対する `nq`/`nv`/`nu` の数，`utils.drive_gains` に対するアクチュエータゲイン（SI，1%以内），URDFに対するmimic等式拘束，`home` キーフレームが初期姿勢と一致すること，床の上で `home` から2秒間の保持（床がなければ追加．全関節0.02 rad以内，ベース0.02 m以内），visualジオメトリの `rgba` とコライダーのgroup 3を確認します．SOBIT HOMEとSOBIT LIGHTは12/12でパスします．
+
+<p align="right">(<a href="#readme-top">上に戻る</a>)</p>
+
+
 ### ロボット側の既知の問題
 
 - **質量のない親リンク下の固定ジョイント:** 自動的に処理されます（上記の`import.fix_massless_parents`を参照）．無効にする場合は，このようなジョイントの親を慣性を持つ最も近いリンクに変更する（originも調整），または親リンクにinertialを追加してください．そうしないと子リンクはワールドに固定された別のアーティキュレーションルートになります．
