@@ -35,6 +35,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         return
 
     print(f"--- Building ROS 2 Action Graphs for {robot_prim_path} ---")
+    reset_stop = ros_config.get("reset_sim_time_on_stop", False)
     keys = og.Controller.Keys
 
     # ========================================================================
@@ -67,7 +68,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         values = [
             ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
             ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
-            ("SimTime.inputs:resetOnStop", ros_config.get("reset_sim_time_on_stop", False)),
+            ("SimTime.inputs:resetOnStop", reset_stop),
             ("PubTF.inputs:topicName", "tf"),
         ]
         conns = [
@@ -120,6 +121,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         values = [
             ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
             ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
+            ("SimTime.inputs:resetOnStop", reset_stop),
             ("PubJoints.inputs:nodeNamespace", ros_config.get("namespace", "")),
             ("PubJoints.inputs:topicName", ros_config.get("topic_joint_states", "joint_states")),
         ]
@@ -181,6 +183,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                 keys.SET_VALUES: [
                     ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
                     ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
+                    ("SimTime.inputs:resetOnStop", reset_stop),
 
                     # Twist Subscriber
                     ("SubTwist.inputs:nodeNamespace", ros_config.get("namespace", "")),
@@ -298,7 +301,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperRGB.inputs:enableSemanticLabels", _sub(settings, "rgb", "enable_semantic_labels", False)),
                         ("HelperRGB.inputs:enabled", _sub(settings, "rgb", "enabled", True)),
                         ("HelperRGB.inputs:frameSkipCount", _frame_skip(settings, "rgb")),
-                        ("HelperRGB.inputs:resetSimulationTimeOnStop", _sub(settings, "rgb", "reset_sim_time_on_stop", False)),
+                        ("HelperRGB.inputs:resetSimulationTimeOnStop", _sub(settings, "rgb", "reset_sim_time_on_stop", reset_stop)),
                         ("HelperRGB.inputs:type", "rgb"),
                         ("HelperRGB.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperRGB.inputs:topicName", _sub(settings, "rgb", "topic", f"{name}/rgb")),
@@ -308,7 +311,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperDepth.inputs:enableSemanticLabels", _sub(settings, "depth", "enable_semantic_labels", False)),
                         ("HelperDepth.inputs:enabled", _sub(settings, "depth", "enabled", True)),
                         ("HelperDepth.inputs:frameSkipCount", _frame_skip(settings, "depth")),
-                        ("HelperDepth.inputs:resetSimulationTimeOnStop", _sub(settings, "depth", "reset_sim_time_on_stop", False)),
+                        ("HelperDepth.inputs:resetSimulationTimeOnStop", _sub(settings, "depth", "reset_sim_time_on_stop", reset_stop)),
                         ("HelperDepth.inputs:type", "depth"),
                         ("HelperDepth.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperDepth.inputs:topicName", _sub(settings, "depth", "topic", f"{name}/depth")),
@@ -318,7 +321,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperPCL.inputs:enableSemanticLabels", _sub(settings, "pcl", "enable_semantic_labels", False)),
                         ("HelperPCL.inputs:enabled", _sub(settings, "pcl", "enabled", True)),
                         ("HelperPCL.inputs:frameSkipCount", _frame_skip(settings, "pcl")),
-                        ("HelperPCL.inputs:resetSimulationTimeOnStop", _sub(settings, "pcl", "reset_sim_time_on_stop", False)),
+                        ("HelperPCL.inputs:resetSimulationTimeOnStop", _sub(settings, "pcl", "reset_sim_time_on_stop", reset_stop)),
                         ("HelperPCL.inputs:type", "depth_pcl"),
                         ("HelperPCL.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperPCL.inputs:topicName", _sub(settings, "pcl", "topic", f"{name}/points")),
@@ -375,7 +378,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("PubLidar.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("PubLidar.inputs:topicName", settings.get("topic_lidar", f"{name}/scan")),
                         ("PubLidar.inputs:frameId", settings.get("frame_id", name)),
-                        ("PubLidar.inputs:resetSimulationTimeOnStop", settings.get("reset_sim_time_on_stop", False)),
+                        ("PubLidar.inputs:resetSimulationTimeOnStop", settings.get("reset_sim_time_on_stop", reset_stop)),
                     ],
                     keys.CONNECT: [
                         ("OnTick.outputs:tick", "RunOnce.inputs:execIn"),
@@ -406,6 +409,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     keys.SET_VALUES: [
                         ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
                         ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
+                        ("SimTime.inputs:resetOnStop", reset_stop),
                         ("ReadLidar.inputs:lidarPrim", [Sdf.Path(full_path)]),
                         ("PubLidar.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("PubLidar.inputs:topicName", settings.get("topic_lidar", f"{name}/scan")),
@@ -451,6 +455,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     keys.SET_VALUES: [
                         ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
                         ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
+                        ("SimTime.inputs:resetOnStop", reset_stop),
                         ("ReadImu.inputs:imuPrim", [Sdf.Path(full_path)]),
                         ("ReadImu.inputs:readGravity", settings.get("read_gravity", True)),
                         ("ReadImu.inputs:useLatestData", settings.get("use_latest_data", False)),

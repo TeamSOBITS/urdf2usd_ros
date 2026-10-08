@@ -72,19 +72,19 @@ sensors:
       enabled: true
       enable_semantic_labels: false
       frame_skip: 0
-      reset_sim_time_on_stop: false
+      # reset_sim_time_on_stop: false # default: ros2.reset_sim_time_on_stop
       topic: "camera/color"
     depth:
       enabled: true
       enable_semantic_labels: false
       frame_skip: 0
-      reset_sim_time_on_stop: false
+      # reset_sim_time_on_stop: false # default: ros2.reset_sim_time_on_stop
       topic: "camera/depth"
     pcl:
       enabled: true
       enable_semantic_labels: false
       frame_skip: 0
-      reset_sim_time_on_stop: false
+      # reset_sim_time_on_stop: false # default: ros2.reset_sim_time_on_stop
       topic: "camera/depth/points"
   
   # 2D/3D Lidar
@@ -122,6 +122,7 @@ ros2:
   enabled: true
   domain_id: 0 # ROS_DOMAIN_ID
   namespace: ""
+  reset_sim_time_on_stop: false # SimTime/camera/lidar resetOnStop; keep false (monotonic time)
 
   # GLOBAL PUBLISHERS
   publish_tf: true
