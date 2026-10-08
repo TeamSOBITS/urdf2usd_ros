@@ -147,6 +147,19 @@ ros2:
     wheel_radius: 0.045
     wheel_base: 0.20 # Distance between wheels
 
+  # ROS2_CONTROL (Isaac 6.1+, needs robot_descriptor): an in-process controller_manager hosts the
+  # joint_state_broadcaster and one controller per descriptor group; it replaces the joint-state,
+  # joint-controller and (diff_drive) mobile base graphs below. See README "ros2_control".
+  control:
+    enabled: true # default: true when the isaacsim.ros2.control.ROS2ControlManager node exists
+    # update_rate: 100 # controller_manager Hz
+    # diff_drive: true # false = keep a diff_drive base on the ROS2_MobileBase graph
+    # config_path: /ABSOLUTE/PATH/robot_ros2_control.yaml # default: <usd dir>/<usd stem>_ros2_control.yaml
+    # controllers: # deep-merged into the generated YAML; `type` sets/adds a plugin
+    #   controller_manager: {update_rate: 200}
+    #   arm_position_controller: {constraints: {goal_time: 0.5}}
+    #   wheel_controller: {linear.x.max_velocity: 0.5}
+
   # JOINT CONTROLLERS
   controllers:
     arm_controller:

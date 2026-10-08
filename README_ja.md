@@ -132,7 +132,7 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 > **Isaac Sim 6.xの出力構成:** 6.xのインポータは単一ファイルではなくディレクトリ（`<name>/<robot>.usda`，`payloads/`，`Textures/`）を出力します．`files_path.usd`は従来どおり指定したファイルとして生成され，パッケージはその隣の`<USDファイル名>/`に移動し，`<name>.usd`はそのパッケージを参照する薄いラッパーになります（`Physics`バリアントセットの`physx`を選択し，センサーとOmniGraphもここに保存されます）．ラッパーとパッケージのディレクトリは一緒に保管してください．`files_path.usd`がディレクトリの場合は，インポータのメイン`.usda`がそのまま使われます．
 
 > [!NOTE]
-> **ROS 2ライブラリ:** ROS 2がsourceされていない場合，スクリプトはIsaac Sim 6.xに同梱のROS 2 Jazzyライブラリ（`ROS_DISTRO=jazzy`，`RMW_IMPLEMENTATION=rmw_fastrtps_cpp`，`LD_LIBRARY_PATH`に`isaacsim.ros2.core/jazzy/lib`を追加）で自身を再実行します．`OMNI_KIT_ACCEPT_EULA`が未設定なら`yes`を設定します．ステージを自分で読み込む場合は，ROS 2拡張を有効化した後に`app.update()`を数回実行してからステージを開いてください（6.1では，有効化直後に開くと`omni.graph.core`がクラッシュしました）．
+> **ROS 2ライブラリ:** ROS 2がsourceされていない場合，スクリプトはIsaac Sim 6.xに同梱のROS 2 Jazzyライブラリ（`ROS_DISTRO=jazzy`，`RMW_IMPLEMENTATION=rmw_fastrtps_cpp`，`LD_LIBRARY_PATH`に`isaacsim.ros2.core/jazzy/lib`を追加．取得済みなら追加コントローラのプレフィックスも，[ros2_control](#ros2_control)参照）で自身を再実行します．`ROS_DOMAIN_ID`と`RMW_IMPLEMENTATION`はどの場合も固定されます．`OMNI_KIT_ACCEPT_EULA`が未設定なら`yes`を設定します．ステージを自分で読み込む場合は，ROS 2拡張を有効化した後に`app.update()`を数回実行してからステージを開いてください（6.1では，有効化直後に開くと`omni.graph.core`がクラッシュしました）．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -151,7 +151,30 @@ YAMLに`robot_descriptor: <robot_id>`を書くと，ロボット固有の情報�
 ```sh
 $ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
 ```
-`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は30/30でパスします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）． `config/sobit_light.yaml`はSOBIT LIGHT用の同形式の設定です（Kachaka差動駆動ベース，`ros2.mobile_base`グラフ，URDFは`enable_gz:=True`で生成し`file://`メッシュパスを`package://`に置換）．
+`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は30/30でパスします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）． `config/sobit_light.yaml`はSOBIT LIGHT用の同形式の設定です（Kachaka差動駆動ベースはros2_controlの`wheel_controller`，[ros2_control](#ros2_control)参照，URDFは`enable_gz:=True`で生成し`file://`メッシュパスを`package://`に置換）．
+
+### ros2_control
+
+`ros2.control.enabled`（既定：Isaacに`isaacsim.ros2.control.ROS2ControlManager`ノードがあるとき，つまり6.1以降で有効）と`robot_descriptor`があると，ロボットには`ROS2_JointStates`，`ROS2_Ctrl_*`グラフ，`diff_drive`ベースの`ROS2_MobileBase`の代わりに`ROS2_Control`グラフ（`OnPlaybackTick` -> 関節ルートの`ROS2ControlManager`）が1つ作られます．Play後の最初のtickで，IsaacはUSDからURDFを合成し（ドライブを持つ関節はすべてposition/velocity/effortのコマンドインターフェースを持ち，mimicの従属関節は状態のみ），`/<ns>/robot_description`にlatchし，`controller_manager`をプロセス内で起動します（`/<ns>/controller_manager`，シミュレーション時間）．TF，カメラ，LiDAR，IMUのグラフは変わりません．
+
+- **生成されるYAML：** CLIはディスクリプタから`<usdのディレクトリ>/<usdのstem>_ros2_control.yaml`（`ros2.control.config_path`で変更可）を書き出します：`controller_manager`（`update_rate`，既定100，`use_sim_time: true`），`joint_state_broadcaster`（`/<ns>/joint_states`を配信），およびディスクリプタの`controller`名を持つグループごとのコントローラです．`interface: trajectory` -> `JointTrajectoryController`（`kind`に応じて`command_interfaces: [position]`または`[velocity]`），`interface: group` -> `JointGroupPositionController` / `JointGroupVelocityController`，`diff_drive`ベース -> `DiffDriveController`（ディスクリプタの`left_joints`/`right_joints`による`left/right_wheel_names`，`wheel_radius`/`wheel_separation`，`odom_frame`/`base_frame`，`open_loop`，`enable_odom_tf`，`sobit_light_control/config/gz_controllers.yaml`と同じ±1.0の制限）．キーには`/**/`の名前空間ワイルドカードを使います．`ros2.control.controllers.<name>`はそのコントローラのパラメータに再帰的にマージされます（`type`でプラグインを指定，`type`付きの新しい名前でコントローラを追加，`controller_manager`でマネージャを調整）．`ros2.control.diff_drive: false`で差動駆動を`ROS2_MobileBase`に残せます．除外関節は参照されません．
+- **ROS側からコントローラを有効化**（同じ`ROS_DOMAIN_ID`）．例：SOBIT LIGHT
+  ```sh
+  $ ros2 run controller_manager spawner joint_state_broadcaster head_position_controller arm_position_controller \
+      hand_position_controller wheel_controller -c /sobit_light/controller_manager
+  ```
+- **差動駆動：** Jazzyの`diff_drive_controller`は`/<ns>/<controller>/cmd_vel`を`geometry_msgs/TwistStamped`のみで購読し，スタンプはシミュレーション時間である必要があります（例：`teleop_twist_keyboard --ros-args -p stamped:=true -p use_sim_time:=true -r cmd_vel:=/sobit_light/wheel_controller/cmd_vel`）．`<controller>/odom`と，`/tf`に`odom` -> `base_footprint`を配信します．ディスクリプタの`mobile_base.command_topic`へのリマップはしません．
+- **`/clock`が必要：** ロボットはクロックを持たないため，環境ごとに追加してください（`utils/isaac_world.add_clock_graph`）．
+- **プラグイン：** Isaac 6.1に同梱されているのは`joint_trajectory_controller`，`joint_state_broadcaster`，`imu_sensor_broadcaster`，`force_torque_sensor_broadcaster`のみです．`scripts/fetch_ros2_controllers.py`はJazzyの`diff_drive_controller`，`position_controllers`，`velocity_controllers`（および`forward_command_controller`，`tracetools`，`libfmt9`，lttng-ust，liburcu）のdebを`~/.cache/urdf2usd_ros/ros2_jazzy_extra`（`$URDF2USD_ROS_EXTRA_PREFIX`）に展開し，`ldd`で確認します．`ensure_bundled_ros`はこのプレフィックスを`AMENT_PREFIX_PATH` / `LD_LIBRARY_PATH`に追加します．Isaacのpythonで一度実行してください：
+  ```sh
+  $ cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/scripts/fetch_ros2_controllers.py
+  ```
+- **環境変数の固定：** プロセス内の`controller_manager`は`ROS_DOMAIN_ID` / `RMW_IMPLEMENTATION`をプロセスの環境変数から，OmniGraphノードは`ROS2Context`の入力から取得します．`ensure_bundled_ros(domain_id)`はIsaac起動前に両方の変数を固定し（`rmw_fastrtps_cpp`），ROSがsourceされている場合も両者を一致させます．
+- **実行プロセス：** シミュレーションを再生するプロセスでは，`SimulationApp`の前に`ensure_bundled_ros(domain_id=<ros2.domain_id>)`を，Playの前に`utils.ros2_control.enable()`を呼んでください．`isaacsim.ros2.control`を有効化し，`urdf_synth._prune_to_control_tree`を修正します：Isaacの実装は副次的な制御ルート（`base_link`上の車輪，`arm_base_link`上のアーム）へつながる関節を削除してしまい，コントローラマネージャが"Two root links found"で失敗します．修正版は制御関節の本当の最上位リンクから到達できるものをすべて残します．
+
+### 圧縮画像
+
+Isaacは圧縮RGBストリームをH.264/HEVCの`sensor_msgs/CompressedImage`（JPEG/PNGではない）として配信するため，`image_transport`ではデコードできません．ROS側で[IsaacSim-ros_workspaces](https://github.com/isaac-sim/IsaacSim-ros_workspaces)の`isaac_compressed_image_decoder`を使ってデコードしてください（`ros2 run isaac_compressed_image_decoder decoder_node`，PyAVが必要）．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 

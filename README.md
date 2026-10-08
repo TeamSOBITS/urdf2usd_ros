@@ -132,7 +132,7 @@ The backend is chosen automatically from the installed `isaacsim` version ([isaa
 > **Isaac Sim 6.x output layout.** The 6.x importer writes a directory (`<name>/<robot>.usda`, `payloads/`, `Textures/`) instead of a single file. `files_path.usd` is still the file you ask for: the package is moved to `<usd stem>/` next to it and `<name>.usd` is a thin wrapper that references the package, selects the `physx` variant of the `Physics` variant set and holds the sensors and OmniGraphs. Keep the wrapper and the package directory together. If `files_path.usd` is a directory, the importer's main `.usda` is used directly.
 
 > [!NOTE]
-> **ROS 2 libraries.** If no ROS 2 is sourced, the script re-executes itself with the ROS 2 Jazzy libraries bundled in Isaac Sim 6.x (`ROS_DISTRO=jazzy`, `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, `LD_LIBRARY_PATH` extended with `isaacsim.ros2.core/jazzy/lib`). `OMNI_KIT_ACCEPT_EULA=yes` is set if undefined. When loading a stage yourself, enable the ROS 2 extensions and run a few `app.update()` calls *before* opening the stage; opening it right after enabling them crashed `omni.graph.core` on 6.1.
+> **ROS 2 libraries.** If no ROS 2 is sourced, the script re-executes itself with the ROS 2 Jazzy libraries bundled in Isaac Sim 6.x (`ROS_DISTRO=jazzy`, `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, `LD_LIBRARY_PATH` extended with `isaacsim.ros2.core/jazzy/lib`, plus the extra controller prefix when fetched, see [ros2_control](#ros2_control)); `ROS_DOMAIN_ID` and `RMW_IMPLEMENTATION` are pinned in every case. `OMNI_KIT_ACCEPT_EULA=yes` is set if undefined. When loading a stage yourself, enable the ROS 2 extensions and run a few `app.update()` calls *before* opening the stage; opening it right after enabling them crashed `omni.graph.core` on 6.1.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -151,7 +151,30 @@ The robot USD carries no `PhysicsScene` and no `/clock` publisher: the environme
 ```sh
 $ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
 ```
-`config/sobit_home.yaml` is the reference. SOBIT HOME checks in `tests/convert_and_check.py` pass 30/30 (head camera, both hand cameras, merged lidar and IMU included). `config/sobit_light.yaml` is the same form for SOBIT LIGHT (Kachaka differential base, `ros2.mobile_base` graph; URDF from `enable_gz:=True`, `file://` mesh paths rewritten to `package://`).
+`config/sobit_home.yaml` is the reference. SOBIT HOME checks in `tests/convert_and_check.py` pass 30/30 (head camera, both hand cameras, merged lidar and IMU included). `config/sobit_light.yaml` is the same form for SOBIT LIGHT (Kachaka differential base on ros2_control's `wheel_controller`, see [ros2_control](#ros2_control); URDF from `enable_gz:=True`, `file://` mesh paths rewritten to `package://`).
+
+### ros2_control
+
+With `ros2.control.enabled` (default: on when Isaac has the `isaacsim.ros2.control.ROS2ControlManager` node, i.e. 6.1+) and a `robot_descriptor`, the robot gets one `ROS2_Control` graph (`OnPlaybackTick` -> `ROS2ControlManager` on the articulation root) instead of `ROS2_JointStates`, the `ROS2_Ctrl_*` graphs and, for a `diff_drive` base, `ROS2_MobileBase`. On the first tick after Play, Isaac synthesizes a URDF from the USD (every joint with a drive gets position/velocity/effort command interfaces, mimic followers are state-only), latches it on `/<ns>/robot_description` and hosts a `controller_manager` in-process (`/<ns>/controller_manager`, sim time). TF, camera, lidar and IMU graphs are unchanged.
+
+- **Generated YAML:** the CLI writes `<usd dir>/<usd stem>_ros2_control.yaml` (`ros2.control.config_path` overrides) from the descriptor: `controller_manager` (`update_rate`, default 100, `use_sim_time: true`), `joint_state_broadcaster` (publishes `/<ns>/joint_states`), and one controller per group, named after the descriptor `controller`: `interface: trajectory` -> `JointTrajectoryController` (`command_interfaces: [position]` or `[velocity]` by `kind`), `interface: group` -> `JointGroupPositionController` / `JointGroupVelocityController`, a `diff_drive` base -> `DiffDriveController` (`left/right_wheel_names` from the descriptor's `left_joints`/`right_joints`, `wheel_radius`/`wheel_separation`, `odom_frame`/`base_frame`, `open_loop`, `enable_odom_tf`, the ±1.0 limits of `sobit_light_control/config/gz_controllers.yaml`). Keys use the `/**/` namespace wildcard. `ros2.control.controllers.<name>` is deep-merged into the controller's parameters (`type` sets the plugin, a new name with a `type` adds a controller, `controller_manager` tunes the manager); `ros2.control.diff_drive: false` keeps the diff drive on `ROS2_MobileBase`. Excluded joints are not referenced.
+- **Activate the controllers from ROS** (same `ROS_DOMAIN_ID`), e.g. SOBIT LIGHT:
+  ```sh
+  $ ros2 run controller_manager spawner joint_state_broadcaster head_position_controller arm_position_controller \
+      hand_position_controller wheel_controller -c /sobit_light/controller_manager
+  ```
+- **Diff drive:** Jazzy's `diff_drive_controller` subscribes `/<ns>/<controller>/cmd_vel` as `geometry_msgs/TwistStamped` only, stamped in sim time (e.g. `teleop_twist_keyboard --ros-args -p stamped:=true -p use_sim_time:=true -r cmd_vel:=/sobit_light/wheel_controller/cmd_vel`); it publishes `<controller>/odom` and `odom` -> `base_footprint` on `/tf`. The descriptor's `mobile_base.command_topic` is not remapped.
+- **`/clock` is required:** the robot carries no clock; add one per environment (`utils/isaac_world.add_clock_graph`).
+- **Plugins:** Isaac 6.1 bundles `joint_trajectory_controller`, `joint_state_broadcaster`, `imu_sensor_broadcaster` and `force_torque_sensor_broadcaster` only. `scripts/fetch_ros2_controllers.py` extracts the Jazzy `diff_drive_controller`, `position_controllers`, `velocity_controllers` (and `forward_command_controller`, `tracetools`, `libfmt9`, lttng-ust, liburcu) debs into `~/.cache/urdf2usd_ros/ros2_jazzy_extra` (`$URDF2USD_ROS_EXTRA_PREFIX`) and `ldd`-checks them; `ensure_bundled_ros` adds that prefix to `AMENT_PREFIX_PATH` / `LD_LIBRARY_PATH`. Run it once with Isaac's python:
+  ```sh
+  $ cd IsaacLab && uv run --no-sync python /path/to/urdf2usd_ros/scripts/fetch_ros2_controllers.py
+  ```
+- **Environment pinning:** the in-process `controller_manager` takes `ROS_DOMAIN_ID` / `RMW_IMPLEMENTATION` from the process environment, the OmniGraph nodes from their `ROS2Context` inputs. `ensure_bundled_ros(domain_id)` pins both variables (`rmw_fastrtps_cpp`) before Isaac starts so they agree, also when ROS is sourced.
+- **Runtime process:** in the process that plays the simulation, call `ensure_bundled_ros(domain_id=<ros2.domain_id>)` before `SimulationApp`, then `utils.ros2_control.enable()` before Play. It enables `isaacsim.ros2.control` and patches `urdf_synth._prune_to_control_tree`: Isaac's version drops the joints leading into secondary control roots (wheels on `base_link`, the arm on `arm_base_link`) and the controller manager fails with "Two root links found"; the patch keeps everything reachable from the true top link of the control joints.
+
+### Compressed images
+
+Isaac publishes the compressed RGB streams as H.264/HEVC `sensor_msgs/CompressedImage` (not JPEG/PNG), which `image_transport` cannot decode. Decode them on the ROS side with `isaac_compressed_image_decoder` from [IsaacSim-ros_workspaces](https://github.com/isaac-sim/IsaacSim-ros_workspaces) (`ros2 run isaac_compressed_image_decoder decoder_node`, needs PyAV).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

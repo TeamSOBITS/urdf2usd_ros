@@ -81,6 +81,11 @@ ros2:
   publish_tf: true
   publish_joint_states: true
 
+  # In-process ros2_control: the wheel steer/drive groups map to JointGroupPosition/VelocityController
+  # (scripts/fetch_ros2_controllers.py installs those plugins)
+  control:
+    enabled: true
+
   # Swerve base: the DifferentialController graph does not apply (TODO swerve)
   mobile_base:
     enabled: false

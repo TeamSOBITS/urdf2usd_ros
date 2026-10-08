@@ -85,3 +85,7 @@ ros2:
   domain_id: 0
   publish_tf: true
   publish_joint_states: true
+
+  # In-process ros2_control: descriptor controllers + wheel_controller (diff_drive, replaces ROS2_MobileBase)
+  control:
+    enabled: true
