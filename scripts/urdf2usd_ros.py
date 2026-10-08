@@ -26,7 +26,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir))
 
 from utils.config import load_config
-from utils.isaac_wrappers import import_urdf, apply_drive_settings, apply_initial_pose, apply_sensor_settings
+from utils.isaac_wrappers import import_urdf, apply_drive_settings, apply_initial_pose, apply_friction, apply_sensor_settings
 from utils.isaac_ros2 import create_ros2_bridge
 
 def main():
@@ -76,6 +76,7 @@ def main():
         # Apply Settings
         apply_drive_settings(stage, prim_path, config_data, os.path.abspath(urdf_path))
         apply_initial_pose(stage, prim_path, config_data, os.path.abspath(urdf_path))
+        apply_friction(stage, prim_path, config_data, os.path.abspath(urdf_path))
         apply_sensor_settings(stage, prim_path, config_data)
         create_ros2_bridge(stage, prim_path, config_data)
 

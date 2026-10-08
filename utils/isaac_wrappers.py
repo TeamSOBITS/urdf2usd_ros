@@ -4,6 +4,7 @@ import omni.kit.commands
 from .isaac_version import IS_6
 from .urdf_prepare import prepare_urdf
 from .drive_gains import subtree_inertia, links_without_inertial, resolve_gains, usd_gain, natural_frequency_hz
+from .urdf_friction import apply_link_friction
 from .initial_pose import initial_pose, apply_initial_pose_to_stage
 
 # ---------------------------------------------------------
@@ -52,6 +53,9 @@ def apply_drive_settings(stage, robot_prim_path, config_data, urdf_path=None):
 
 def apply_initial_pose(stage, robot_prim_path, config_data, urdf_path=None):
     apply_initial_pose_to_stage(stage, robot_prim_path, initial_pose(urdf_path, config_data))
+
+def apply_friction(stage, robot_prim_path, config_data, urdf_path):
+    apply_link_friction(stage, robot_prim_path, urdf_path, config_data)
 
 # ---------------------------------------------------------
 # SENSOR CREATION HELPERS
