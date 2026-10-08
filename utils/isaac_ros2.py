@@ -619,6 +619,8 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             {
                 keys.CREATE_NODES: [
                     ("OnTick", "omni.graph.action.OnPlaybackTick"),
+                    # Setup after the first simulation frame: on tick 1 the physics view has no articulation yet
+                    ("RunOnce", "isaacsim.core.nodes.OgnIsaacRunOneSimulationFrame"),
                     ("ControlManager", ros2_control.NODE_TYPE),
                 ],
                 keys.SET_VALUES: [
@@ -629,7 +631,8 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("ControlManager.inputs:useSimTime", True),
                 ],
                 keys.CONNECT: [
-                    ("OnTick.outputs:tick", "ControlManager.inputs:execIn"),
+                    ("OnTick.outputs:tick", "RunOnce.inputs:execIn"),
+                    ("RunOnce.outputs:step", "ControlManager.inputs:execIn"),
                 ],
             },
         )
