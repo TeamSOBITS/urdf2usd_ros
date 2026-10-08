@@ -71,7 +71,6 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             ("PubTF.inputs:topicName", "tf"),
         ]
         conns = [
-            ("OnTick.outputs:tick", "PubTF.inputs:execIn"),
             ("ReadContext.outputs:context", "PubTF.inputs:context"),
             ("SimTime.outputs:simulationTime", "PubTF.inputs:timeStamp"),
         ]
@@ -82,13 +81,16 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                 ("TFTree.inputs:targetPrims", [Sdf.Path(target_path)]),
             ]
             conns += [
+                # Chain publisher after compute node; parallel exec NaNs the articulation in 6.1
                 ("OnTick.outputs:tick", "TFTree.inputs:execIn"),
+                ("TFTree.outputs:execOut", "PubTF.inputs:execIn"),
                 ("TFTree.outputs:parentFrames", "PubTF.inputs:parentFrames"),
                 ("TFTree.outputs:childFrames", "PubTF.inputs:childFrames"),
                 ("TFTree.outputs:translations", "PubTF.inputs:translations"),
                 ("TFTree.outputs:orientations", "PubTF.inputs:orientations"),
             ]
         else:
+            conns.append(("OnTick.outputs:tick", "PubTF.inputs:execIn"))
             values += [
                 ("PubTF.inputs:parentPrim", [Sdf.Path(target_path)]),
                 ("PubTF.inputs:targetPrims", [Sdf.Path(target_path)]),
@@ -122,7 +124,6 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             ("PubJoints.inputs:topicName", ros_config.get("topic_joint_states", "joint_states")),
         ]
         conns = [
-            ("OnTick.outputs:tick", "PubJoints.inputs:execIn"),
             ("ReadContext.outputs:context", "PubJoints.inputs:context"),
             ("SimTime.outputs:simulationTime", "PubJoints.inputs:timeStamp"),
         ]
@@ -130,7 +131,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             nodes.append(("ReadJoints", "isaacsim.sensors.physics.IsaacReadJointState"))
             values.append(("ReadJoints.inputs:prim", [Sdf.Path(target_path)]))
             conns += [
+                # Chain publisher after reader; parallel exec NaNs the articulation in 6.1
                 ("OnTick.outputs:tick", "ReadJoints.inputs:execIn"),
+                ("ReadJoints.outputs:execOut", "PubJoints.inputs:execIn"),
                 ("ReadJoints.outputs:jointNames", "PubJoints.inputs:jointNames"),
                 ("ReadJoints.outputs:jointPositions", "PubJoints.inputs:jointPositions"),
                 ("ReadJoints.outputs:jointVelocities", "PubJoints.inputs:jointVelocities"),
@@ -139,6 +142,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                 ("ReadJoints.outputs:stageMetersPerUnit", "PubJoints.inputs:stageMetersPerUnit"),
             ]
         else:
+            conns.append(("OnTick.outputs:tick", "PubJoints.inputs:execIn"))
             values.append(("PubJoints.inputs:targetPrim", [Sdf.Path(target_path)]))
 
         og.Controller.edit(
@@ -213,8 +217,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("OnTick.outputs:tick", "SubTwist.inputs:execIn"),
                     ("OnTick.outputs:tick", "ArtControllerBase.inputs:execIn"),
                     ("OnTick.outputs:tick", "ComputeOdom.inputs:execIn"),
-                    ("OnTick.outputs:tick", "PubOdom.inputs:execIn"),
-                    ("OnTick.outputs:tick", "PubOdomTf.inputs:execIn"),
+                    # Chain publishers after ComputeOdom; parallel exec NaNs the articulation in 6.1
+                    ("ComputeOdom.outputs:execOut", "PubOdom.inputs:execIn"),
+                    ("ComputeOdom.outputs:execOut", "PubOdomTf.inputs:execIn"),
                     ("OnTick.outputs:tick", "DiffController.inputs:execIn"),
                     ("OnTick.outputs:deltaSeconds", "DiffController.inputs:dt"),
 
@@ -407,8 +412,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("PubLidar.inputs:frameId", settings.get("frame_id", name)),
                     ],
                     keys.CONNECT: [
+                        # Chain publisher after reader; parallel exec NaNs the articulation in 6.1
                         ("OnTick.outputs:tick", "ReadLidar.inputs:execIn"),
-                        ("OnTick.outputs:tick", "PubLidar.inputs:execIn"),
+                        ("ReadLidar.outputs:execOut", "PubLidar.inputs:execIn"),
                         ("ReadContext.outputs:context", "PubLidar.inputs:context"),
                         ("SimTime.outputs:simulationTime", "PubLidar.inputs:timeStamp"),
                         
@@ -456,8 +462,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("PubImu.inputs:publishOrientation", settings.get("publish_orientation", True)),
                     ],
                     keys.CONNECT: [
+                        # Chain publisher after reader; parallel exec NaNs the articulation in 6.1
                         ("OnTick.outputs:tick", "ReadImu.inputs:execIn"),
-                        ("OnTick.outputs:tick", "PubImu.inputs:execIn"),
+                        ("ReadImu.outputs:execOut", "PubImu.inputs:execIn"),
                         ("ReadContext.outputs:context", "PubImu.inputs:context"),
                         ("SimTime.outputs:simulationTime", "PubImu.inputs:timeStamp"),
                         
