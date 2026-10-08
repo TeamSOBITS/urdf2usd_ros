@@ -159,6 +159,24 @@ def main():
     n_vis = len(ET.parse(cfg["files_path"]["urdf"]).getroot().findall("link/visual/geometry/mesh"))
     check("URDF visual meshes present in USD", not miss, miss[:4] or f"{n_vis} mesh visuals, all have geometry")
 
+    # --- contact friction ---
+    from utils.urdf_friction import friction_spec, link_colliders
+    from pxr import UsdShade
+    fr_links, fr_mode = friction_spec(cfg["files_path"]["urdf"], cfg)
+    all_links = {l.get("name") for l in ET.parse(cfg["files_path"]["urdf"]).getroot().findall("link")}
+    bad = []
+    for ln, mu in fr_links.items():
+        cols = link_colliders(stage, prim_path, ln, all_links - {ln})
+        if not cols:
+            bad.append(f"{ln}: no collider")
+        for c in cols:
+            m = UsdShade.MaterialBindingAPI(c).ComputeBoundMaterial("physics")[0].GetPrim()
+            got = m.GetAttribute("physics:dynamicFriction").Get() if m else None
+            mode = m.GetAttribute("physxMaterial:frictionCombineMode").Get() if m else None
+            if got is None or abs(got - mu) > 1e-6 or mode != fr_mode:
+                bad.append(f"{ln}: mu {got} (want {mu}), combine {mode} (want {fr_mode})")
+    check("link friction materials", not bad, bad[:3] or f"{len(fr_links)} links, combine {fr_mode}")
+
     # --- drives ---
     # explicit overrides are SI in the YAML; angular USD gains are per degree
     bad = []
