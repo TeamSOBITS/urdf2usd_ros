@@ -167,6 +167,10 @@ Gains in the YAML are SI: N·m/rad and N·m·s/rad for revolute joints, N/m and 
 
 Isaac loads every joint at the URDF zero pose, which can put parts of the robot below the floor. The initial pose is taken from the URDF `<ros2_control>` block (`<state_interface name="position">` `initial_value`, rad or m) and then overridden or extended by the optional top-level `initial_pose: {joint: value}` in the YAML (SI units). Angular values are converted to degrees for USD, and each value is written both as the drive target and as the joint state (`PhysicsJointStateAPI`), so the robot starts there and holds it; the same value is also written as `newton:angular:position` / `newton:linear:position`, which is where Newton's USD importer reads the start position. Values outside the joint limits (`physics:lowerLimit`/`upperLimit`) are clamped to them with a printed note, e.g. a URDF `initial_value` of -1.571 rad is just past a -90° limit. Velocity-driven joints are skipped and unknown joints give a warning.
 
+### Contact friction
+
+Per-link `<gazebo reference="LINK"><mu1>..</mu1><mu2>..</mu2></gazebo>` friction in the URDF is carried into USD: each link gets a `UsdShade.Material` under `<robot>/PhysicsMaterials/<link>` with `UsdPhysics.MaterialAPI` (`staticFriction` = `dynamicFriction` = `mu1`, restitution 0; `mu2` is ignored because the PhysX material is isotropic) and `PhysxMaterialAPI` `frictionCombineMode`, bound with the `physics` purpose to that link's own collision prims. The default combine mode is `min` like Gazebo/ODE, whereas PhysX would average with the floor: e.g. SOBIT LIGHT `base_link` has `mu=0` so the Kachaka body, whose bottom touches the floor, slides like its casters instead of being pinned by a high-friction floor. The optional YAML `friction: {combine_mode: min, links: {link: mu}}` overrides or extends the URDF values. Newton's USD importer takes the shape friction from the bound physics material's `physics:dynamicFriction`; it does not read the PhysX combine mode. Code: `utils/urdf_friction.py`.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 

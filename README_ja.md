@@ -167,6 +167,10 @@ YAMLのゲインはSI単位です（回転関節: N·m/rad，N·m·s/rad，直�
 
 Isaacはすべての関節をURDFのゼロ姿勢で読み込むため，ロボットの一部が床下に入ることがあります．初期姿勢はURDFの `<ros2_control>`（`<state_interface name="position">` の `initial_value`，rad または m）から取得し，YAMLの任意のトップレベルキー `initial_pose: {関節名: 値}`（SI単位）で上書き・追加できます．回転関節の値はUSD用に度へ変換され，ドライブ目標とジョイント状態（`PhysicsJointStateAPI`）の両方に書き込まれるため，ロボットはその姿勢で開始し保持します．同じ値は `newton:angular:position` / `newton:linear:position` にも書き込まれ，NewtonのUSDインポータはここから開始位置を読みます．関節リミット（`physics:lowerLimit`/`upperLimit`）を超える値はリミットにクランプされ通知が出力されます（例: URDFの `initial_value` -1.571 radは-90°のリミットをわずかに超えます）．速度制御の関節はスキップされ，存在しない関節には警告が出ます．
 
+### 接触摩擦
+
+URDFのリンクごとの `<gazebo reference="LINK"><mu1>..</mu1><mu2>..</mu2></gazebo>` の摩擦をUSDに引き継ぎます．各リンクについて `<robot>/PhysicsMaterials/<link>` に `UsdShade.Material` を作り，`UsdPhysics.MaterialAPI`（`staticFriction` = `dynamicFriction` = `mu1`，反発係数0．PhysXのマテリアルは等方なので `mu2` は無視されます）と `PhysxMaterialAPI` の `frictionCombineMode` を設定し，`physics` purposeでそのリンク自身のコリジョンプリムにバインドします．結合モードの既定はGazebo/ODEと同じ `min` です（PhysXの既定は床との平均）．例えばSOBIT LIGHTの `base_link` は `mu=0` で，底面が床に接するKachakaの本体が，摩擦の大きい床に固定されず，キャスターのように滑ります．任意のYAMLキー `friction: {combine_mode: min, links: {link: mu}}` でURDFの値を上書き・追加できます．NewtonのUSDインポータは形状の摩擦をバインドされた物理マテリアルの `physics:dynamicFriction` から読み，PhysXの結合モードは読みません．コードは `utils/urdf_friction.py` です．
+
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
 
