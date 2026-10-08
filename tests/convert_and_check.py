@@ -229,6 +229,36 @@ def main():
     want_t = {"isaacsim.core.nodes.IsaacComputeTransformTree", "isaacsim.sensors.physics.IsaacReadJointState"}
     check("TF/JointState topology", want_t <= types or not IS_6, sorted(want_t - types) or "ComputeTransformTree + ReadJointState")
 
+    # --- environment ownership, sim time, camera topics ---
+    scenes = [p.GetPath().pathString for p in Usd.PrimRange(robot) if p.IsA(UsdPhysics.Scene)]
+    check("no PhysicsScene in the robot", not scenes, scenes[:3] or "the environment owns the scene")
+    resets = {str(bool(p.GetAttribute("inputs:resetOnStop").Get())) for p in node_prims
+              if p.GetAttribute("node:type").Get() == "isaacsim.core.nodes.IsaacReadSimulationTime"}
+    check("uniform resetOnStop", len(resets) <= 1, sorted(resets) or "no sim-time nodes")
+    bad, n_info, n_comp = [], 0, 0
+    for name, s in cfg.get("sensors", {}).items():
+        if s["type"] != "camera":
+            continue
+        g = f"{prim_path}/ROS2_Camera_{name}"
+        for node, grp, default in (("InfoRGB", "rgb", f"{name}/camera_info"), ("InfoDepth", "depth", f"{name}/depth/camera_info")):
+            if not s.get(grp, {}).get("enabled", True):
+                continue
+            n_info += 1
+            attr = stage.GetPrimAtPath(f"{g}/{node}").GetAttribute("inputs:topicName")
+            want = s.get(grp, {}).get("info_topic", default)
+            if not attr or attr.Get() != want:
+                bad.append(f"{name}/{node}: {attr.Get() if attr else 'missing'} (want {want})")
+        rgb = s.get("rgb", {})
+        if rgb.get("enabled", True) and rgb.get("compressed"):
+            n_comp += 1
+            attr = stage.GetPrimAtPath(f"{g}/HelperCompressed").GetAttribute("inputs:type")
+            want = f"rgb_{rgb.get('compressed_codec', 'h264')}"
+            if not attr or attr.Get() != want:
+                bad.append(f"{name}/HelperCompressed: {attr.Get() if attr else 'missing'} (want {want})")
+    check("camera_info helpers", not [b for b in bad if "/Info" in b], [b for b in bad if "/Info" in b][:3] or f"{n_info} streams")
+    check("compressed image helpers", not [b for b in bad if "/HelperCompressed" in b],
+          [b for b in bad if "/HelperCompressed" in b][:3] or f"{n_comp} cameras")
+
     # --- physics frames ---
     ensure_root_physics_scene(stage)  # robot assets carry no scene; in memory only, never saved
     # Ground in the session layer only (never saved into the converted USD) so hold/step run with contact.

@@ -151,7 +151,7 @@ The robot USD carries no `PhysicsScene` and no `/clock` publisher: the environme
 ```sh
 $ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
 ```
-`config/sobit_home.yaml` is the reference. SOBIT HOME checks in `tests/convert_and_check.py` pass 24/24 (head camera, both hand cameras, merged lidar and IMU included). `config/sobit_light.yaml` is the same form for SOBIT LIGHT (Kachaka differential base, `ros2.mobile_base` graph; URDF from `enable_gz:=True`, `file://` mesh paths rewritten to `package://`).
+`config/sobit_home.yaml` is the reference. SOBIT HOME checks in `tests/convert_and_check.py` pass 30/30 (head camera, both hand cameras, merged lidar and IMU included). `config/sobit_light.yaml` is the same form for SOBIT LIGHT (Kachaka differential base, `ros2.mobile_base` graph; URDF from `enable_gz:=True`, `file://` mesh paths rewritten to `package://`).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
