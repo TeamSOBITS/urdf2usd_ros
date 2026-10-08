@@ -13,7 +13,8 @@ GROUP_TYPES = {"position": "position_controllers/JointGroupPositionController",
                "velocity": "velocity_controllers/JointGroupVelocityController"}
 # Same tuning as sobit_light_control/config/gz_controllers.yaml (wheel_controller)
 DIFF_DRIVE_DEFAULTS = {
-    "enable_odom_tf": True, "open_loop": True, "publish_rate": 50.0, "cmd_vel_timeout": 0.5,
+    # bare frame names like the rest of the TF tree (the controller would prefix them with the namespace)
+    "enable_odom_tf": True, "tf_frame_prefix_enable": False, "open_loop": True, "publish_rate": 50.0, "cmd_vel_timeout": 0.5,
     "linear.x.max_velocity": 1.0, "linear.x.min_velocity": -1.0, "linear.x.max_acceleration": 1.0,
     "angular.z.max_velocity": 1.0, "angular.z.min_velocity": -1.0,
     "angular.z.max_acceleration": 1.0, "angular.z.min_acceleration": -1.0,
