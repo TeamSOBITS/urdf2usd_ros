@@ -4,6 +4,7 @@ import omni.kit.commands
 from .isaac_version import IS_6
 from .urdf_prepare import prepare_urdf
 from .drive_gains import subtree_inertia, links_without_inertial, resolve_gains, usd_gain, natural_frequency_hz
+from .initial_pose import initial_pose, apply_initial_pose_to_stage
 
 # ---------------------------------------------------------
 # URDF IMPORT WRAPPER
@@ -48,6 +49,9 @@ def apply_drive_settings(stage, robot_prim_path, config_data, urdf_path=None):
             drive_api.GetDampingAttr().Set(d_usd)
             fn = f" | fn {natural_frequency_hz(k, info[name]):.1f} Hz" if info and name in info and k > 0 else ""
             print(f"  + Joint: {name} | {api_type} | k={k:.4g} d={d:.4g} (SI) | USD k={k_usd:.4g} d={d_usd:.4g}{fn}")
+
+def apply_initial_pose(stage, robot_prim_path, config_data, urdf_path=None):
+    apply_initial_pose_to_stage(stage, robot_prim_path, initial_pose(urdf_path, config_data))
 
 # ---------------------------------------------------------
 # SENSOR CREATION HELPERS

@@ -61,6 +61,7 @@ from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdUtils
 
 from utils.isaac_version import VERSION, IS_6
 from utils.isaac_wrappers import lidar_implementation
+from utils.initial_pose import initial_pose, joint_state_attr, usd_position
 
 RESULTS = []
 ERRORS = []
@@ -121,6 +122,26 @@ def main():
     dof_usd = len([n for n in movable if n in usd_joints and
                    (UsdPhysics.DriveAPI.Get(usd_joints[n], "angular") or UsdPhysics.DriveAPI.Get(usd_joints[n], "linear"))])
     check("movable joints in USD", set(movable) <= set(usd_joints), f"{dof_usd}/{len(movable)} with drive")
+
+    # --- initial pose (URDF ros2_control initial_value + YAML initial_pose) ---
+    pose, bad = initial_pose(cfg["files_path"]["urdf"], cfg), []
+    for n, v in pose.items():
+        prim = usd_joints.get(n)
+        for t in ("angular", "linear"):
+            drive = prim and UsdPhysics.DriveAPI.Get(prim, t)
+            if not drive:
+                continue
+            if drive.GetStiffnessAttr().Get() == 0:
+                break
+            want = usd_position(v, t == "angular")
+            tgt, st = drive.GetTargetPositionAttr().Get(), joint_state_attr(prim, t).Get()
+            if tgt is None or st is None or abs(tgt - want) > 1e-4 or abs(st - want) > 1e-4:
+                bad.append(f"{n}: want {want:.4f}, target {tgt}, state {st}")
+            break
+        else:
+            bad.append(f"{n}: no drive in USD")
+    check("initial pose applied", not bad, bad[:3] or f"{len(pose)} joints, nonzero: " +
+          ", ".join(f"{n}={v:.4f}" for n, v in pose.items() if v) if pose else "no initial pose declared")
 
     # --- visual meshes ---
     def _mesh_points(link_name):
@@ -192,19 +213,27 @@ def main():
     # Ground in the session layer only (never saved into the converted USD) so hold/step run with contact.
     with Usd.EditContext(stage, stage.GetSessionLayer()):
         bb = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy])
-        min_z = bb.ComputeWorldBound(robot).ComputeAlignedBox().GetMin()[2]
+        base = _base_frame()
+        frame = next((q for q in Usd.PrimRange(robot, Usd.TraverseInstanceProxies()) if q.GetName() == base), None) if base else None
+        if frame:
+            z0 = UsdGeom.XformCache().GetLocalToWorldTransform(frame).ExtractTranslation()[2]
+            lift_z, method = 0.002 - z0, f"frame '{base}' at z=0.002"
+        else:
+            min_z = bb.ComputeWorldBound(robot).ComputeAlignedBox().GetMin()[2]
+            lift_z, method = (-min_z + 0.01 if min_z < 0 else 0.0), "bbox min z (no base frame)"
         gnd = UsdGeom.Cube.Define(stage, "/_validation_ground")
         gnd.GetSizeAttr().Set(1.0)
         gxf = UsdGeom.Xformable(gnd)
         gxf.AddTranslateOp().Set(Gf.Vec3d(0, 0, -0.5))
         gxf.AddScaleOp().Set(Gf.Vec3f(20, 20, 1))
         UsdPhysics.CollisionAPI.Apply(gnd.GetPrim())
-        if min_z < 0:
+        if lift_z:
             rxf = UsdGeom.Xformable(robot)
             ops = rxf.GetOrderedXformOps()
             lift = rxf.AddTranslateOp(opSuffix="validation_lift")
-            lift.Set(Gf.Vec3d(0, 0, -min_z + 0.01))
+            lift.Set(Gf.Vec3d(0, 0, lift_z))
             rxf.SetXformOpOrder([lift] + ops)
+    print(f"Ground placement: {method}, lift {lift_z:.4f} m")
     # RTX sensors/graphs would enqueue render work every simulate() call and exhaust GPU memory.
     paused = [p.GetPath() for p in Usd.PrimRange(robot)
               if p.GetTypeName().endswith("Graph") or p.GetTypeName() in ("Camera", "OmniLidar", "IsaacImuSensor")
@@ -310,6 +339,13 @@ def main():
     tl.stop()
     check("no log errors", len([e for e in ERRORS if "inotify" not in e]) == 0, [e for e in ERRORS if "inotify" not in e][:3])
     return report()
+
+def _base_frame():
+    ref = _arg("--descriptor", None) or CFG.get("robot_descriptor")
+    if ref:
+        from utils.descriptor import import_loader
+        return import_loader().load(ref, args=dict(a.split("=", 1) for a in _xacro) or None).base_frame
+    return "base_footprint"
 
 def step_dof_checks(args, view, names, urdf_joints, usd_joints, mimics, advance, np):
     """Per-joint step tracking plus mimic coupling; both are skipped with --skip-step-test."""
