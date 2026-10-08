@@ -19,8 +19,8 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.ros_env import bundled_ros_lib, extra_paths, extra_prefix
 
-ROS_REPO = "http://packages.ros.org/ros2/ubuntu"
-UBUNTU_REPO = "http://archive.ubuntu.com/ubuntu"
+ROS_REPO = "https://packages.ros.org/ros2/ubuntu"
+UBUNTU_REPO = "https://archive.ubuntu.com/ubuntu"
 ROS_PKGS = ["ros-jazzy-diff-drive-controller", "ros-jazzy-position-controllers", "ros-jazzy-velocity-controllers",
             "ros-jazzy-forward-command-controller", "ros-jazzy-tracetools"]
 # Runtime deps of the above that neither Isaac's bundle nor a stock Ubuntu desktop ships
@@ -49,8 +49,9 @@ def _index(base, dists, comps):
 
 def _download(url, sha256, dest):
     data = _get(url)
-    if sha256 and hashlib.sha256(data).hexdigest() != sha256:
-        raise SystemExit(f"Error: checksum mismatch for {url}")
+    # fail closed: the index hash is the only integrity check on this path (apt-get verifies signatures itself)
+    if not sha256 or hashlib.sha256(data).hexdigest() != sha256:
+        raise SystemExit(f"Error: {'no SHA256 in the index' if not sha256 else 'checksum mismatch'} for {url}")
     with open(dest, "wb") as f:
         f.write(data)
 
