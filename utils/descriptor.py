@@ -61,15 +61,22 @@ def _fill(dst, src):
 def _is_placeholder(value):
     return not value or "/ABSOLUTE/" in str(value)
 
-def _stream_cfg(stream):
-    return {"enabled": True, "topic": stream.raw_topic} if stream else {"enabled": False}
+def _stream_cfg(desc, stream, compressed=False):
+    if not stream:
+        return {"enabled": False}
+    cfg = {"enabled": True, "topic": stream.raw_topic, "frame_id": desc.frame(stream.frame)}
+    if stream.info_topic:
+        cfg["info_topic"] = stream.info_topic
+    if compressed and stream.compressed_topic:
+        cfg.update(compressed=True, compressed_topic=stream.compressed_topic)
+    return cfg
 
 def _camera_cfg(desc, cam):
     color, depth = cam.color, cam.depth
     main = color or depth
     frame = desc.frame(main.frame)
     cfg = {"type": "camera", "parent_link": frame, "frame_id": frame,
-           "rgb": _stream_cfg(color), "depth": _stream_cfg(depth),
+           "rgb": _stream_cfg(desc, color, compressed=True), "depth": _stream_cfg(desc, depth),
            "pcl": {"enabled": bool(depth and depth.points_topic)}}
     if depth and depth.points_topic:
         cfg["pcl"]["topic"] = depth.points_topic

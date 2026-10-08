@@ -74,12 +74,19 @@ sensors:
       frame_skip: 0
       # reset_sim_time_on_stop: false # default: ros2.reset_sim_time_on_stop
       topic: "camera/color"
+      # frame_id: "camera_color_optical_frame" # default: the sensor frame_id
+      # info_topic: "camera/color/camera_info" # default: <sensor>/camera_info
+      # compressed: false # true = also publish sensor_msgs/CompressedImage (GPU encoder)
+      # compressed_codec: "h264" # h264 or hevc
+      # compressed_topic: "camera/color/compressed" # default: <topic>/compressed
     depth:
       enabled: true
       enable_semantic_labels: false
       frame_skip: 0
       # reset_sim_time_on_stop: false # default: ros2.reset_sim_time_on_stop
       topic: "camera/depth"
+      # frame_id: "camera_depth_optical_frame" # default: the sensor frame_id
+      # info_topic: "camera/depth/camera_info" # default: <sensor>/depth/camera_info
     pcl:
       enabled: true
       enable_semantic_labels: false
