@@ -20,26 +20,24 @@ def _scan_env(pkg):
                     return cand
     return None
 
-def resolve_package_paths(config_data, urdf=None):
-    """package -> abs dir. Order: YAML ros_package_paths, ament_index, env-var prefix scan."""
-    paths = {k: os.path.abspath(v) for k, v in (config_data.get("ros_package_paths") or {}).items()}
-    urdf = urdf or config_data.get("files_path", {}).get("urdf", "")
+def find_package(pkg):
+    """Share dir of an installed package: ament_index first, then the env-var prefix scan."""
     try:
         from ament_index_python.packages import get_package_share_directory
+        return get_package_share_directory(pkg)
     except Exception:
-        get_package_share_directory = None
+        return _scan_env(pkg)
+
+def resolve_package_paths(config_data, urdf=None):
+    """package -> abs dir. Order: YAML ros_package_paths (placeholders skipped), ament_index, env-var prefix scan."""
+    paths = {k: os.path.abspath(v) for k, v in (config_data.get("ros_package_paths") or {}).items()
+             if "/ABSOLUTE/" not in str(v)}
+    urdf = urdf or config_data.get("files_path", {}).get("urdf", "")
     for pkg in urdf_packages(urdf):
-        if pkg in paths:
-            continue
-        found = None
-        if get_package_share_directory:
-            try:
-                found = get_package_share_directory(pkg)
-            except Exception:
-                pass
-        found = found or _scan_env(pkg)
-        if found:
-            paths[pkg] = found
+        if pkg not in paths:
+            found = find_package(pkg)
+            if found:
+                paths[pkg] = found
     return paths
 
 def check_packages(urdf, paths, config_data):

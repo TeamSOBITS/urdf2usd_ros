@@ -2,7 +2,6 @@ import argparse
 import os
 import sys
 os.environ.setdefault("OMNI_KIT_ACCEPT_EULA", "yes")
-import yaml
 
 # Check if running in Isaac Sim context
 try:
@@ -24,6 +23,7 @@ except ImportError:
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir))
 
+from utils.config import load_config
 from utils.isaac_wrappers import import_urdf, apply_drive_settings, apply_sensor_settings
 from utils.isaac_ros2 import create_ros2_bridge
 
@@ -31,20 +31,19 @@ def main():
     parser = argparse.ArgumentParser(description="Convert ROS URDF to Isaac Sim USD with Physics/Sensor configuration.")
     parser.add_argument("--robot", help="Name of the drive/sensor YAML in the config folder (without extension)")
     parser.add_argument("--config", help="Explicit YAML path (overrides --robot)")
-    
+    parser.add_argument("--urdf", help="override files_path.urdf")
+    parser.add_argument("--usd", help="override files_path.usd")
+    parser.add_argument("--package-path", action="append", metavar="NAME=PATH", help="override ros_package_paths entry (repeatable)")
+    parser.add_argument("--descriptor", help="robot descriptor id or .robot.yaml path (overrides `robot_descriptor`)")
+    parser.add_argument("--xacro-arg", action="append", metavar="K=V", default=[], help="xacro arg for the descriptor variant (repeatable)")
+
     args = parser.parse_args()
 
-    # Validate Paths
     if not (args.robot or args.config):
         parser.error("one of --robot or --config is required")
-    robot_config_path = args.config or os.path.join(current_dir, "..", "config", args.robot+".yaml")
-    if not os.path.exists(robot_config_path):
-        print(f"Error: Robot file not found in config folder: {args.robot}")
-        sys.exit(1)
-
-    # Load Config
-    with open(robot_config_path, 'r') as f:
-        config_data = yaml.safe_load(f)
+    xacro_args = dict(a.split("=", 1) for a in args.xacro_arg)
+    config_data = load_config(robot=args.robot, path=args.config, urdf=args.urdf, usd=args.usd,
+                              package_paths=args.package_path, descriptor=args.descriptor, xacro_args=xacro_args)
 
     urdf_path = config_data.get("files_path", {}).get("urdf", "")
     usd_path = config_data.get("files_path", {}).get("usd", urdf_path.replace(".urdf", ".usd"))

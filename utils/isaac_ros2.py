@@ -15,6 +15,12 @@ enable_extension("isaacsim.robot.wheeled_robots")
 def _sub(settings, group, key, default):
     return settings.get(group, {}).get(key, default)
 
+def _drop_disabled(settings, spec):
+    """Drop the camera helper nodes (and their values/connections) of streams disabled in the config."""
+    off = {h for h, g in (("HelperRGB", "rgb"), ("HelperDepth", "depth"), ("HelperPCL", "pcl"))
+           if not _sub(settings, g, "enabled", True)}
+    return {k: [t for t in v if not any(str(x).split(".")[0] in off for x in t[:2])] for k, v in spec.items()}
+
 def _frame_skip(settings, group):
     # 6.x deprecates frame skipping in favour of omni:sensor:tickRate on the prim
     return 0 if IS_6 else _sub(settings, group, "frame_skip", 0)
@@ -263,7 +269,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
 
             og.Controller.edit(
                 {"graph_path": graph_path, "evaluator_name": "execution"},
-                {
+                _drop_disabled(settings, {
                     keys.CREATE_NODES: [
                         ("OnTick", "omni.graph.action.OnPlaybackTick"),
                         ("ReadContext", "isaacsim.ros2.bridge.ROS2Context"),
@@ -291,7 +297,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperRGB.inputs:type", "rgb"),
                         ("HelperRGB.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperRGB.inputs:topicName", _sub(settings, "rgb", "topic", f"{name}/rgb")),
-                        ("HelperRGB.inputs:frameId", name),
+                        ("HelperRGB.inputs:frameId", settings.get("frame_id", name)),
 
                         # Depth
                         ("HelperDepth.inputs:enableSemanticLabels", _sub(settings, "depth", "enable_semantic_labels", False)),
@@ -301,7 +307,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperDepth.inputs:type", "depth"),
                         ("HelperDepth.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperDepth.inputs:topicName", _sub(settings, "depth", "topic", f"{name}/depth")),
-                        ("HelperDepth.inputs:frameId", name),
+                        ("HelperDepth.inputs:frameId", settings.get("frame_id", name)),
 
                         # Point Cloud
                         ("HelperPCL.inputs:enableSemanticLabels", _sub(settings, "pcl", "enable_semantic_labels", False)),
@@ -311,7 +317,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperPCL.inputs:type", "depth_pcl"),
                         ("HelperPCL.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperPCL.inputs:topicName", _sub(settings, "pcl", "topic", f"{name}/points")),
-                        ("HelperPCL.inputs:frameId", name),
+                        ("HelperPCL.inputs:frameId", settings.get("frame_id", name)),
                     ],
                     keys.CONNECT: [
                         # Initialization (Render Product)
@@ -333,7 +339,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("ReadContext.outputs:context", "HelperPCL.inputs:context"),
                         ("CreateRP.outputs:renderProductPath", "HelperPCL.inputs:renderProductPath"),
                     ]
-                }
+                })
             )
 
             print(f"  + Camera {name} Graph Built Successfully")
@@ -398,7 +404,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("ReadLidar.inputs:lidarPrim", [Sdf.Path(full_path)]),
                         ("PubLidar.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("PubLidar.inputs:topicName", settings.get("topic_lidar", f"{name}/scan")),
-                        ("PubLidar.inputs:frameId", name),
+                        ("PubLidar.inputs:frameId", settings.get("frame_id", name)),
                     ],
                     keys.CONNECT: [
                         ("OnTick.outputs:tick", "ReadLidar.inputs:execIn"),
@@ -444,7 +450,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("ReadImu.inputs:useLatestData", settings.get("use_latest_data", False)),
                         ("PubImu.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("PubImu.inputs:topicName", settings.get("topic_imu", f"{name}/imu")),
-                        ("PubImu.inputs:frameId", name),
+                        ("PubImu.inputs:frameId", settings.get("frame_id", name)),
                         ("PubImu.inputs:publishAngularVelocity", settings.get("publish_angular_velocity", True)),
                         ("PubImu.inputs:publishLinearAcceleration", settings.get("publish_linear_acceleration", True)),
                         ("PubImu.inputs:publishOrientation", settings.get("publish_orientation", True)),

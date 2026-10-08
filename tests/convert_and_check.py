@@ -21,46 +21,29 @@ import subprocess
 def _arg(name, default):
     return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 
+def _args(name):
+    return [sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == name]
+
 # Convert in a child process (the real CLI): re-opening a stage whose graphs were just built
 # in the same Kit process crashes omni.graph.core on 6.1.
 _robot = _arg("--robot", None)
 if not _robot:
-    sys.exit("usage: convert_and_check.py --robot NAME [--urdf F] [--usd F] [--package-path NAME=PATH] [--skip-step-test]")
+    sys.exit("usage: convert_and_check.py --robot NAME [--urdf F] [--usd F] [--package-path NAME=PATH] "
+             "[--descriptor ID|PATH] [--xacro-arg K=V] [--skip-step-test]")
 
-def _merge(dst, src):
-    for k, v in src.items():
-        if isinstance(v, dict) and isinstance(dst.get(k), dict):
-            _merge(dst[k], v)
-        else:
-            dst[k] = v
-
-def load_config():
-    """config/<robot>.yaml, overlaid by git-ignored config/<robot>.local.yaml, then CLI overrides."""
-    with open(os.path.join(ROOT, "config", _robot + ".yaml")) as f:
-        cfg = yaml.safe_load(f)
-    local = os.path.join(ROOT, "config", _robot + ".local.yaml")
-    if os.path.exists(local):
-        with open(local) as f:
-            _merge(cfg, yaml.safe_load(f) or {})
-    if "--urdf" in sys.argv:
-        cfg["files_path"]["urdf"] = _arg("--urdf", None)
-    if "--usd" in sys.argv:
-        cfg["files_path"]["usd"] = _arg("--usd", None)
-    for i, a in enumerate(sys.argv):
-        if a == "--package-path":
-            name, path = sys.argv[i + 1].split("=", 1)
-            cfg.setdefault("ros_package_paths", {})[name] = path
-    return cfg
-
+from utils.config import load_config
 import tempfile
-CFG = load_config()
+_xacro = _args("--xacro-arg")
+CFG = load_config(robot=_robot, urdf=_arg("--urdf", None), usd=_arg("--usd", None), package_paths=_args("--package-path"),
+                  descriptor=_arg("--descriptor", None), xacro_args=dict(a.split("=", 1) for a in _xacro))
 for _k in ("urdf", "usd"):
     if "/ABSOLUTE/" in CFG["files_path"][_k]:
         sys.exit(f"files_path.{_k} is a placeholder: pass --{_k}, or create config/{_robot}.local.yaml")
 _tmp_cfg = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
 yaml.safe_dump(CFG, _tmp_cfg)
 _tmp_cfg.close()
-_conv = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "urdf2usd_ros.py"), "--config", _tmp_cfg.name],
+_fwd = (["--descriptor", _arg("--descriptor", None)] if "--descriptor" in sys.argv else []) + [x for a in _xacro for x in ("--xacro-arg", a)]
+_conv = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "urdf2usd_ros.py"), "--config", _tmp_cfg.name, *_fwd],
                        capture_output=True, text=True)
 os.remove(_tmp_cfg.name)
 CONVERT_OK = _conv.returncode == 0 and "SUCCESS" in _conv.stdout
@@ -97,6 +80,8 @@ def main():
     ap.add_argument("--urdf", help="override files_path.urdf")
     ap.add_argument("--usd", help="override files_path.usd")
     ap.add_argument("--package-path", action="append", metavar="NAME=PATH", help="override ros_package_paths entry (repeatable)")
+    ap.add_argument("--descriptor", help="robot descriptor id or .robot.yaml path (overrides `robot_descriptor`)")
+    ap.add_argument("--xacro-arg", action="append", metavar="K=V", help="xacro arg for the descriptor variant (repeatable)")
     args = ap.parse_args()
 
     cfg = CFG
