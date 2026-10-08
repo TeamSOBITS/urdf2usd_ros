@@ -104,13 +104,15 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             ("ReadContext.outputs:context", "PubTF.inputs:context"),
             ("SimTime.outputs:simulationTime", "PubTF.inputs:timeStamp"),
         ]
-        # The root link's children, not the root itself: that would publish a base_link -> base_link self transform
-        tf_targets = [c.GetPath() for c in stage.GetPrimAtPath(target_path).GetChildren() if c.IsA(UsdGeom.Xformable)]
+        # Parent frame = the root link's parent prim (base_footprint): the tree then starts with the URDF edge
+        # into the root link instead of a base_link -> base_link self transform (or a stray world frame)
+        tf_parent = stage.GetPrimAtPath(target_path).GetParent()
+        tf_parent_path = tf_parent.GetPath() if tf_parent.IsA(UsdGeom.Xformable) else Sdf.Path(target_path)
         if use_tree:
             nodes.append(("TFTree", "isaacsim.core.nodes.IsaacComputeTransformTree"))
             values += [
-                ("TFTree.inputs:parentPrim", [Sdf.Path(target_path)]),
-                ("TFTree.inputs:targetPrims", tf_targets),
+                ("TFTree.inputs:parentPrim", [tf_parent_path]),
+                ("TFTree.inputs:targetPrims", [Sdf.Path(target_path)]),
             ]
             conns += [
                 # Chain publisher after compute node; parallel exec NaNs the articulation in 6.1
@@ -124,8 +126,8 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         else:
             conns.append(("OnTick.outputs:tick", "PubTF.inputs:execIn"))
             values += [
-                ("PubTF.inputs:parentPrim", [Sdf.Path(target_path)]),
-                ("PubTF.inputs:targetPrims", tf_targets),
+                ("PubTF.inputs:parentPrim", [tf_parent_path]),
+                ("PubTF.inputs:targetPrims", [Sdf.Path(target_path)]),
             ]
 
         og.Controller.edit(
