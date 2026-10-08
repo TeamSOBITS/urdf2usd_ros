@@ -15,10 +15,14 @@ enable_extension("isaacsim.robot.wheeled_robots")
 def _sub(settings, group, key, default):
     return settings.get(group, {}).get(key, default)
 
-def _drop_disabled(settings, spec):
+def _drop_disabled(settings, spec, missing=()):
     """Drop the camera helper nodes (and their values/connections) of streams disabled in the config."""
-    off = {h for h, g in (("HelperRGB", "rgb"), ("HelperDepth", "depth"), ("HelperPCL", "pcl"))
+    off = {h for h, g in (("HelperRGB", "rgb"), ("HelperDepth", "depth"), ("HelperPCL", "pcl"),
+                          ("InfoRGB", "rgb"), ("InfoDepth", "depth"))
            if not _sub(settings, g, "enabled", True)}
+    if not (_sub(settings, "rgb", "enabled", True) and _sub(settings, "rgb", "compressed", False)):
+        off.add("HelperCompressed")
+    off |= set(missing)
     return {k: [t for t in v if not any(str(x).split(".")[0] in off for x in t[:2])] for k, v in spec.items()}
 
 def _frame_skip(settings, group):
@@ -275,6 +279,19 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
             graph_path = f"{robot_prim_path}/ROS2_Camera_{name}"
             if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
 
+            ns = ros_config.get("namespace", "")
+            rgb_topic = _sub(settings, "rgb", "topic", f"{name}/rgb")
+            rgb_frame = _sub(settings, "rgb", "frame_id", settings.get("frame_id", name))
+            depth_frame = _sub(settings, "depth", "frame_id", settings.get("frame_id", name))
+            pcl_frame = _sub(settings, "pcl", "frame_id", depth_frame)
+            codec = _sub(settings, "rgb", "compressed_codec", "h264")
+            missing = []
+            if not _node_exists("isaacsim.ros2.bridge.ROS2CameraInfoHelper"):
+                print(f"  Note: ROS2CameraInfoHelper is not available, camera {name} publishes no camera_info")
+                missing += ["InfoRGB", "InfoDepth"]
+            if codec not in ("h264", "hevc"):
+                raise SystemExit(f"Error: sensors.{name}.rgb.compressed_codec must be h264 or hevc, got '{codec}'")
+
             og.Controller.edit(
                 {"graph_path": graph_path, "evaluator_name": "execution"},
                 _drop_disabled(settings, {
@@ -286,6 +303,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperRGB", "isaacsim.ros2.bridge.ROS2CameraHelper"),
                         ("HelperDepth", "isaacsim.ros2.bridge.ROS2CameraHelper"),
                         ("HelperPCL", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                        ("HelperCompressed", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                        ("InfoRGB", "isaacsim.ros2.bridge.ROS2CameraInfoHelper"),
+                        ("InfoDepth", "isaacsim.ros2.bridge.ROS2CameraInfoHelper"),
                     ],
                     keys.SET_VALUES: [
                         ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
@@ -305,7 +325,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperRGB.inputs:type", "rgb"),
                         ("HelperRGB.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperRGB.inputs:topicName", _sub(settings, "rgb", "topic", f"{name}/rgb")),
-                        ("HelperRGB.inputs:frameId", settings.get("frame_id", name)),
+                        ("HelperRGB.inputs:frameId", rgb_frame),
 
                         # Depth
                         ("HelperDepth.inputs:enableSemanticLabels", _sub(settings, "depth", "enable_semantic_labels", False)),
@@ -315,7 +335,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperDepth.inputs:type", "depth"),
                         ("HelperDepth.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperDepth.inputs:topicName", _sub(settings, "depth", "topic", f"{name}/depth")),
-                        ("HelperDepth.inputs:frameId", settings.get("frame_id", name)),
+                        ("HelperDepth.inputs:frameId", depth_frame),
 
                         # Point Cloud
                         ("HelperPCL.inputs:enableSemanticLabels", _sub(settings, "pcl", "enable_semantic_labels", False)),
@@ -325,7 +345,28 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("HelperPCL.inputs:type", "depth_pcl"),
                         ("HelperPCL.inputs:nodeNamespace", ros_config.get("namespace", "")),
                         ("HelperPCL.inputs:topicName", _sub(settings, "pcl", "topic", f"{name}/points")),
-                        ("HelperPCL.inputs:frameId", settings.get("frame_id", name)),
+                        ("HelperPCL.inputs:frameId", pcl_frame),
+
+                        # Compressed RGB (GPU encoder, sensor_msgs/CompressedImage)
+                        ("HelperCompressed.inputs:enabled", True),
+                        ("HelperCompressed.inputs:frameSkipCount", _frame_skip(settings, "rgb")),
+                        ("HelperCompressed.inputs:resetSimulationTimeOnStop", _sub(settings, "rgb", "reset_sim_time_on_stop", reset_stop)),
+                        ("HelperCompressed.inputs:type", f"rgb_{codec}"),
+                        ("HelperCompressed.inputs:nodeNamespace", ns),
+                        ("HelperCompressed.inputs:topicName", _sub(settings, "rgb", "compressed_topic", f"{rgb_topic}/compressed")),
+                        ("HelperCompressed.inputs:frameId", rgb_frame),
+
+                        # CameraInfo
+                        ("InfoRGB.inputs:enabled", _sub(settings, "rgb", "enabled", True)),
+                        ("InfoRGB.inputs:resetSimulationTimeOnStop", _sub(settings, "rgb", "reset_sim_time_on_stop", reset_stop)),
+                        ("InfoRGB.inputs:nodeNamespace", ns),
+                        ("InfoRGB.inputs:topicName", _sub(settings, "rgb", "info_topic", f"{name}/camera_info")),
+                        ("InfoRGB.inputs:frameId", rgb_frame),
+                        ("InfoDepth.inputs:enabled", _sub(settings, "depth", "enabled", True)),
+                        ("InfoDepth.inputs:resetSimulationTimeOnStop", _sub(settings, "depth", "reset_sim_time_on_stop", reset_stop)),
+                        ("InfoDepth.inputs:nodeNamespace", ns),
+                        ("InfoDepth.inputs:topicName", _sub(settings, "depth", "info_topic", f"{name}/depth/camera_info")),
+                        ("InfoDepth.inputs:frameId", depth_frame),
                     ],
                     keys.CONNECT: [
                         # Initialization (Render Product)
@@ -346,14 +387,31 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                         ("OnTick.outputs:tick", "HelperPCL.inputs:execIn"),
                         ("ReadContext.outputs:context", "HelperPCL.inputs:context"),
                         ("CreateRP.outputs:renderProductPath", "HelperPCL.inputs:renderProductPath"),
+
+                        # Compressed RGB
+                        ("OnTick.outputs:tick", "HelperCompressed.inputs:execIn"),
+                        ("ReadContext.outputs:context", "HelperCompressed.inputs:context"),
+                        ("CreateRP.outputs:renderProductPath", "HelperCompressed.inputs:renderProductPath"),
+
+                        # CameraInfo
+                        ("OnTick.outputs:tick", "InfoRGB.inputs:execIn"),
+                        ("ReadContext.outputs:context", "InfoRGB.inputs:context"),
+                        ("CreateRP.outputs:renderProductPath", "InfoRGB.inputs:renderProductPath"),
+                        ("OnTick.outputs:tick", "InfoDepth.inputs:execIn"),
+                        ("ReadContext.outputs:context", "InfoDepth.inputs:context"),
+                        ("CreateRP.outputs:renderProductPath", "InfoDepth.inputs:renderProductPath"),
                     ]
-                })
+                }, missing)
             )
 
             print(f"  + Camera {name} Graph Built Successfully")
             print(f"    - RGB Topic: {_sub(settings, 'rgb', 'topic', f'{name}/rgb')}")
             print(f"    - Depth Topic: {_sub(settings, 'depth', 'topic', f'{name}/depth')}")
             print(f"    - PCL Topic: {_sub(settings, 'pcl', 'topic', f'{name}/points')}")
+            print(f"    - CameraInfo Topics: {_sub(settings, 'rgb', 'info_topic', f'{name}/camera_info')}, "
+                  f"{_sub(settings, 'depth', 'info_topic', f'{name}/depth/camera_info')}")
+            if _sub(settings, "rgb", "compressed", False):
+                print(f"    - Compressed Topic ({codec}): {_sub(settings, 'rgb', 'compressed_topic', f'{rgb_topic}/compressed')}")
 
         # --- LIDAR GRAPH ---
         elif stype == "lidar" and lidar_implementation(settings) == "rtx":
