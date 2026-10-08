@@ -179,5 +179,5 @@ def pin_ros_env(domain_id, rmw="rmw_fastrtps_cpp"):
     want = {"ROS_DOMAIN_ID": str(int(domain_id)), "RMW_IMPLEMENTATION": rmw}
     changed = {k: os.environ[k] for k, v in want.items() if os.environ.get(k) not in (None, v)}
     if changed:
-        print(f"Note: ROS env pinned to {want} (was {changed})")
+        print(f"Note: ROS env pinned to {want} (was {changed})", flush=True)  # flushed before an execv
     os.environ.update(want)

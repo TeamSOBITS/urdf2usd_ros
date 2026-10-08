@@ -12,9 +12,6 @@ os.environ.setdefault("OMNI_KIT_ACCEPT_EULA", "yes")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from utils.ros_env import ensure_bundled_ros
-ensure_bundled_ros()
-
 import yaml
 import subprocess
 
@@ -36,6 +33,8 @@ import tempfile
 _xacro = _args("--xacro-arg")
 CFG = load_config(robot=_robot, urdf=_arg("--urdf", None), usd=_arg("--usd", None), package_paths=_args("--package-path"),
                   descriptor=_arg("--descriptor", None), xacro_args=dict(a.split("=", 1) for a in _xacro))
+from utils.ros_env import ensure_bundled_ros
+ensure_bundled_ros(domain_id=CFG.get("ros2", {}).get("domain_id", 0))
 for _k in ("urdf", "usd"):
     if "/ABSOLUTE/" in CFG["files_path"][_k]:
         sys.exit(f"files_path.{_k} is a placeholder: pass --{_k}, or create config/{_robot}.local.yaml")
