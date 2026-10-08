@@ -1,5 +1,6 @@
 import argparse
 import os
+import subprocess
 import sys
 os.environ.setdefault("OMNI_KIT_ACCEPT_EULA", "yes")
 
@@ -8,6 +9,7 @@ try:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from utils.ros_env import ensure_bundled_ros
     ensure_bundled_ros()
+    LAUNCH_ENV = dict(os.environ)  # pre-Kit environment for the MJCF export subprocess
     # Initialize Isaac Sim application
     from isaacsim import SimulationApp
     simulation_app = SimulationApp({"renderer": "RayTracedLighting", "headless": True})
@@ -36,6 +38,8 @@ def main():
     parser.add_argument("--package-path", action="append", metavar="NAME=PATH", help="override ros_package_paths entry (repeatable)")
     parser.add_argument("--descriptor", help="robot descriptor id or .robot.yaml path (overrides `robot_descriptor`)")
     parser.add_argument("--xacro-arg", action="append", metavar="K=V", default=[], help="xacro arg for the descriptor variant (repeatable)")
+    parser.add_argument("--mjcf", nargs="?", const="", metavar="PATH",
+                        help="also export a MuJoCo MJCF via Newton (default path: the USD with .xml)")
 
     args = parser.parse_args()
 
@@ -83,6 +87,19 @@ def main():
     else:
         print("FAILURE: URDF Import command returned failure.")
         sys.exit(1)
+
+    if args.mjcf is not None:
+        # Separate process: Newton's warp must not share the Kit process, and close() may _exit()
+        cmd = [sys.executable, os.path.join(current_dir, "usd2mjcf.py"), "--usd", os.path.abspath(usd_path),
+               "--urdf", os.path.abspath(urdf_path)]
+        cmd += ["--config", args.config] if args.config else ["--robot", args.robot]
+        cmd += ["--descriptor", args.descriptor] if args.descriptor else []
+        cmd += [x for a in args.xacro_arg for x in ("--xacro-arg", a)]
+        cmd += ["--mjcf", args.mjcf] if args.mjcf else []
+        if subprocess.run(cmd, env=LAUNCH_ENV).returncode != 0:
+            print("FAILURE: MJCF export failed")
+            simulation_app.close()
+            sys.exit(1)
 
     # Cleanup
     simulation_app.close()
