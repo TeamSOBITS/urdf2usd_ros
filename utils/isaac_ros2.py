@@ -624,7 +624,9 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                     ("ControlManager", ros2_control.NODE_TYPE),
                 ],
                 keys.SET_VALUES: [
-                    ("ControlManager.inputs:targetPrim", [Sdf.Path(target_path)]),
+                    # The robot prim, not the root link: a referenced robot's root link path no longer matches
+                    # the physics articulation pattern, the node resolves the single ArticulationRootAPI below it
+                    ("ControlManager.inputs:targetPrim", [Sdf.Path(robot_prim_path)]),
                     ("ControlManager.inputs:controllerConfig", control_yaml),
                     ("ControlManager.inputs:namespace", ros_config.get("namespace", "")),
                     ("ControlManager.inputs:publishRobotDescription", True),
