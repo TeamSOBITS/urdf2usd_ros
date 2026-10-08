@@ -231,6 +231,51 @@ It checks the `nq`/`nv`/`nu` counts against the USD joints and drives, the actua
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
+### Isaac Lab
+
+`lab/` runs a converted robot in [Isaac Lab](https://github.com/isaac-sim/IsaacLab) 3.0 on PhysX or on Newton (MuJoCo-Warp), optionally inside a world USD, and doubles as a hold/tracking test. Requirements: an Isaac Lab 3.0 checkout with its uv venv (`isaaclab_physx`, `isaaclab_newton`, `isaaclab_tasks`), a config with `robot_descriptor` and a converted `files_path.usd`.
+
+```sh
+$ cd <IsaacLab>
+$ export SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config:/path/to/sobit_light_description/config
+$ uv run --no-sync python /path/to/urdf2usd_ros/lab/run.py --robot sobit_home [--backend physx|newton] \
+    [--world WORLD.usda] [--spawn X Y Z YAW_DEG] [--num-envs N] [--hold] [--wave] [--wave-group NAME] \
+    [--steps N] [--keep-open] [--device cpu|cuda] [--viz kit|newton_gl]
+# e.g. the RoboCup@Home arena exported by gz-usd, GUI
+$ uv run --no-sync python /path/to/urdf2usd_ros/lab/run.py --robot sobit_light --backend newton \
+    --world /path/to/sobits_gazebo_worlds/export/usd/rcw2026_arena.usda --spawn -2.5 -2.5 0.002 90 --hold --wave --viz kit --keep-open
+```
+Without `--viz` it runs headless. Phases run in order, `--steps` env steps each (50 Hz, default 250 = 5 s): `--hold` (default) keeps the initial pose, `--wave` moves one group by `--wave-amp` (0.25) at `--wave-hz` (0.5) and measures the tracking error. Once per simulated second it prints the root-link height, max |q − q_init| over the position-driven joints, the tracking error and a NaN check, and at the end a `[lab] SUMMARY {json}` line. It exits non-zero on NaN, a hold deviation above `--max-hold-dev` (0.05) or a tracking error above `--max-track-err` (0.05).
+
+- **Prepared files** (`lab/prepare.py`, pxr only, run in a subprocess and cached in `output/lab/`): `output/lab/<robot>/<robot>.usda` is the robot USD without OmniGraphs, RTX lidar and IMU prims and with its PhysicsScene deactivated (Isaac Lab owns `/physicsScene`); `meta.json` holds the joints, groups, initial pose and root offset. Worlds get an overlay layer in `output/lab/worlds/`. Both are regenerated when an input (USD, URDF, config, descriptor, `prepare.py`) changes; run `lab/prepare.py --robot NAME [--world W]` to inspect them.
+- **From the descriptor:** one `ImplicitActuatorCfg` per descriptor group (its `joints` + `uncommanded_joints`) and per `mobile_base.controllers` entry, with exact joint names and `stiffness`/`damping` left to the USD drives (the converter's gains, so both backends use the same values). USD joints in no group (e.g. `excluded_joints` such as the Kachaka `docking_joint` and wheels) form one more `excluded` group that keeps its USD drive. The action is a position offset from the initial pose for the joints of the `kind: position` groups (mobile-base controllers excluded); `kind: velocity` groups get zero velocity targets and everything else holds its initial target. The wave group is the first `ee[].control.group`, else the first position group. The spawn pose places `base_frame` at `--spawn` (default `0 0 0.002 0`), adding the `base_frame` → root-link offset read from the USD (Isaac Lab poses the root link, e.g. 0.27 m above `base_footprint` on SOBIT HOME).
+- **Initial pose:** `utils.initial_pose.initial_pose()` with the converter's clamping to the joint limits, i.e. the same values the converter wrote; joints not in the pose use the USD drive target, velocity-driven joints start at 0. A difference to the USD drive targets is printed as a note (reconvert).
+- **Backends:** `--backend physx` selects the `isaacsim_physx` preset (Kit PhysX), `--backend newton` the `newton_mjwarp` preset (MuJoCo-Warp, `implicitfast`, pyramidal cone, contact capacities `--nconmax 4096` / `--njmax 16384`, sized for a furnished arena of about 650 contacts). The env is a Direct workflow env (`lab/env.py`, `LabEnvCfg.setup(robot_meta, world_meta, spawn)`); the presets resolve through `isaaclab_tasks.utils.hydra.resolve_presets`.
+- **World workarounds** (for gz-usd world exports; each is a separate step in `lab/prepare.py` and is listed when the run starts): the world's own PhysicsScene is deactivated (always); material friction is clamped to `--max-friction` (default 1.0 on Newton, off on PhysX; Gazebo ODE values such as μ = 50/100 make MuJoCo-Warp contacts stick); free multi-body models joined only by fixed joints (e.g. a basket) get an `ArticulationRootAPI` on Newton, whose importer rejects them otherwise; with `--num-envs > 1` on Newton the world is cloned per env (`--world-per-env` forces it) at the world's xy extent + 1 m, since Newton's global world may not hold bodies. Without `--world` a ground plane is used.
+
+`tests/check_lab.py` runs every robot × backend with `--hold --wave` in separate processes and prints a table (logs in `output/lab/check/`); `--vram-limit-mib` kills a run above that total GPU memory:
+```sh
+$ uv run --no-sync python /path/to/urdf2usd_ros/tests/check_lab.py --robots sobit_home sobit_light \
+    --world /path/to/rcw2026_arena.usda --spawn -2.5 -2.5 0.002 90 [--backends physx newton] [--device cpu]
+```
+It takes about 100 s for the four runs on an RTX 3080 Ti (PhysX on the GPU), 1 env each. Results in the RCW2026 arena (`--spawn -2.5 -2.5 0.002 90`, 5 s hold + 5 s wave; hold = max |q − q_init| [rad or m] over the position-driven joints, track = max wave tracking error after 0.5 s):
+
+| robot | backend | hold | track | root link z end [m] | env steps/s |
+|---|---|---|---|---|---|
+| sobit_home | physx | 0.0145 | 0.0221 | 0.2714 | 15 |
+| sobit_home | newton | 0.0158 | 0.0201 | 0.2711 | 209 |
+| sobit_light | physx | 0.0105 | 0.0248 | 0.0000 | 23 |
+| sobit_light | newton | 0.0104 | 0.0222 | 0.0000 | 240 |
+
+On a ground plane and with `--num-envs 2` on Newton (per-env arena) the SOBIT HOME numbers are the same within 2e-4.
+
+Known issues:
+- **GPU PhysX on a shared GPU is slow:** with a desktop session and other GPU work on the same card, GPU PhysX ran SOBIT HOME at about 15 env steps/s (0.3× real time). `--device cpu` runs PhysX at 140–170 env steps/s with the same results; Newton runs on the GPU at about 200 steps/s.
+- **steps/s** excludes the first simulated second (warm-up, CUDA graph capture on Newton).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
 ### Known robot-side issues
 
 - **Fixed joint under a massless parent:** handled automatically (see `import.fix_massless_parents` above). If you disable it, parent such joints to the nearest link that has inertia (adjust the origin) or give the parent link an inertial; otherwise the child becomes a separate articulation root anchored to the world.

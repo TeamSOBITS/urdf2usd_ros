@@ -231,6 +231,51 @@ USDの関節とドライブに対する `nq`/`nv`/`nu` の数，`utils.drive_gai
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
 
+### Isaac Lab
+
+`lab/` は変換したロボットを[Isaac Lab](https://github.com/isaac-sim/IsaacLab) 3.0上のPhysXまたはNewton（MuJoCo-Warp）で，必要ならワールドUSDの中で動かします．姿勢保持・追従のテストとしても使えます．必要なもの: Isaac Lab 3.0のチェックアウトとそのuv venv（`isaaclab_physx`，`isaaclab_newton`，`isaaclab_tasks`），`robot_descriptor` をもつ設定YAML，変換済みの `files_path.usd`．
+
+```sh
+$ cd <IsaacLab>
+$ export SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config:/path/to/sobit_light_description/config
+$ uv run --no-sync python /path/to/urdf2usd_ros/lab/run.py --robot sobit_home [--backend physx|newton] \
+    [--world WORLD.usda] [--spawn X Y Z YAW_DEG] [--num-envs N] [--hold] [--wave] [--wave-group NAME] \
+    [--steps N] [--keep-open] [--device cpu|cuda] [--viz kit|newton_gl]
+# 例: gz-usdで出力したRoboCup@Homeアリーナ，GUIあり
+$ uv run --no-sync python /path/to/urdf2usd_ros/lab/run.py --robot sobit_light --backend newton \
+    --world /path/to/sobits_gazebo_worlds/export/usd/rcw2026_arena.usda --spawn -2.5 -2.5 0.002 90 --hold --wave --viz kit --keep-open
+```
+`--viz` を付けなければヘッドレスで実行します．フェーズは順に各 `--steps` 環境ステップ（50 Hz，既定250 = 5秒）実行します: `--hold`（既定）は初期姿勢を保持し，`--wave` は1つのグループを `--wave-amp`（0.25）・`--wave-hz`（0.5）で動かして追従誤差を測ります．シミュレーション1秒ごとにルートリンクの高さ，位置制御関節の max |q − q_init|，追従誤差，NaNチェックを表示し，最後に `[lab] SUMMARY {json}` を出力します．NaN，`--max-hold-dev`（0.05）を超える保持偏差，`--max-track-err`（0.05）を超える追従誤差のいずれかで非ゼロ終了します．
+
+- **前処理ファイル**（`lab/prepare.py`．pxrのみで別プロセス実行し，`output/lab/` にキャッシュ）: `output/lab/<robot>/<robot>.usda` はOmniGraph，RTX lidar，IMUのプリムを除き，PhysicsSceneを無効化したロボットUSDです（`/physicsScene` はIsaac Labが持ちます）．`meta.json` には関節，グループ，初期姿勢，ルートのオフセットが入ります．ワールドは `output/lab/worlds/` にオーバーレイレイヤを作ります．入力（USD，URDF，設定，ディスクリプタ，`prepare.py`）が変わると再生成します．中身の確認は `lab/prepare.py --robot NAME [--world W]` で行えます．
+- **ディスクリプタから導出するもの:** ディスクリプタのグループ（`joints` + `uncommanded_joints`）と `mobile_base.controllers` の各エントリごとに `ImplicitActuatorCfg` を1つ作ります．関節名は完全一致で，`stiffness`/`damping` はUSDのドライブ値（変換時のゲイン．両バックエンドで同じ値）を使います．どのグループにも属さないUSDの関節（Kachakaの `docking_joint` や車輪など `excluded_joints` の関節）は `excluded` グループとしてUSDのドライブのまま扱います．アクションは `kind: position` のグループ（モバイルベースのコントローラを除く）の関節に対する初期姿勢からの位置オフセットです．`kind: velocity` のグループには速度目標0を与え，それ以外は初期目標を保持します．waveのグループは最初の `ee[].control.group`，なければ最初の位置グループです．スポーン位置は `base_frame` を `--spawn`（既定 `0 0 0.002 0`）に置き，USDから読んだ `base_frame` → ルートリンクのオフセットを加えます（Isaac Labはルートリンクの位置を指定します．SOBIT HOMEでは `base_footprint` の0.27 m上）．
+- **初期姿勢:** `utils.initial_pose.initial_pose()` に変換時と同じ関節リミットでのクランプを適用した値，つまり変換器がUSDに書いた値です．姿勢にない関節はUSDのドライブ目標，速度制御関節は0から始まります．USDのドライブ目標と異なる場合は注意を表示します（再変換してください）．
+- **バックエンド:** `--backend physx` は `isaacsim_physx` プリセット（Kit PhysX），`--backend newton` は `newton_mjwarp` プリセット（MuJoCo-Warp，`implicitfast`，pyramidal cone，接触容量 `--nconmax 4096` / `--njmax 16384`．約650接触の家具ありアリーナに合わせた値）を選びます．環境はDirectワークフローの環境（`lab/env.py`，`LabEnvCfg.setup(robot_meta, world_meta, spawn)`）で，プリセットは `isaaclab_tasks.utils.hydra.resolve_presets` で解決します．
+- **ワールドの回避策**（gz-usdで出力したワールド向け．それぞれ `lab/prepare.py` の個別の手順で，実行開始時に一覧表示します）: ワールド自身のPhysicsSceneを無効化（常に）．マテリアルの摩擦係数を `--max-friction` にクランプ（Newtonでは既定1.0，PhysXでは無効．μ = 50/100のようなGazebo ODEの値ではMuJoCo-Warpの接触が張り付きます）．固定ジョイントだけで結合された自由な複数ボディのモデル（かごなど）には，Newtonでは `ArticulationRootAPI` を付与（ないとNewtonのインポータが受け付けません）．Newtonで `--num-envs > 1` のときはワールドを環境ごとに複製し（`--world-per-env` で強制），間隔はワールドのxy範囲 + 1 mです（Newtonのグローバルワールドはボディを持てないため）．`--world` がなければ地面を使います．
+
+`tests/check_lab.py` はロボット × バックエンドのすべての組み合わせを `--hold --wave` で別プロセス実行し，表を表示します（ログは `output/lab/check/`）．`--vram-limit-mib` を超えるGPUメモリ使用でその実行を停止します．
+```sh
+$ uv run --no-sync python /path/to/urdf2usd_ros/tests/check_lab.py --robots sobit_home sobit_light \
+    --world /path/to/rcw2026_arena.usda --spawn -2.5 -2.5 0.002 90 [--backends physx newton] [--device cpu]
+```
+RTX 3080 Ti（PhysXはGPU），各1環境で4実行に約100秒かかります．RCW2026アリーナ（`--spawn -2.5 -2.5 0.002 90`，保持5秒 + wave 5秒．hold = 位置制御関節の max |q − q_init| [rad または m]，track = 0.5秒以降のwave追従誤差の最大値）での結果:
+
+| robot | backend | hold | track | ルートリンク z 終了時 [m] | env steps/s |
+|---|---|---|---|---|---|
+| sobit_home | physx | 0.0145 | 0.0221 | 0.2714 | 15 |
+| sobit_home | newton | 0.0158 | 0.0201 | 0.2711 | 209 |
+| sobit_light | physx | 0.0105 | 0.0248 | 0.0000 | 23 |
+| sobit_light | newton | 0.0104 | 0.0222 | 0.0000 | 240 |
+
+地面のみの場合と，Newtonで `--num-envs 2`（環境ごとのアリーナ）の場合も，SOBIT HOMEの値は2e-4以内で一致します．
+
+既知の問題:
+- **GPUを共有するとGPU PhysXが遅い:** デスクトップや他のGPU処理と同じカードでは，GPU PhysXでSOBIT HOMEが約15 env steps/s（実時間の0.3倍）でした．`--device cpu` ではPhysXが140〜170 env steps/sで同じ結果になります．NewtonはGPUで約200 steps/sです．
+- **steps/s** は最初のシミュレーション1秒（ウォームアップ，NewtonのCUDAグラフ取得）を含みません．
+
+<p align="right">(<a href="#readme-top">上に戻る</a>)</p>
+
+
 ### ロボット側の既知の問題
 
 - **質量のない親リンク下の固定ジョイント:** 自動的に処理されます（上記の`import.fix_massless_parents`を参照）．無効にする場合は，このようなジョイントの親を慣性を持つ最も近いリンクに変更する（originも調整），または親リンクにinertialを追加してください．そうしないと子リンクはワールドに固定された別のアーティキュレーションルートになります．
