@@ -116,14 +116,21 @@ def _diff_drive_cfg(desc, ctrl):
             "wheel_base": ctrl.wheel_separation, "topic_cmd_vel": ctrl.command_topic or mb.command_topic,
             "topic_odom": mb.odom_topic, "frame_odom": desc.odom_frame, "frame_base": desc.base_frame}
 
-def apply_descriptor(cfg, descriptor=None, xacro_args=None):
-    """Fill cfg from the robot descriptor without overwriting explicit values; no-op without `robot_descriptor`."""
+def load_descriptor(cfg, descriptor=None, xacro_args=None, quiet=False):
+    """The robot descriptor of cfg (`descriptor` overrides `robot_descriptor`), or None without one."""
     ref = descriptor or cfg.get("robot_descriptor")
     if not ref:
+        return None
+    desc = import_loader().load(ref, args=dict(xacro_args or {}) or None)
+    if not quiet:
+        print(f"Robot descriptor: {desc.robot_id} v{desc.version} ({desc.path})")
+    return desc
+
+def apply_descriptor(cfg, descriptor=None, xacro_args=None):
+    """Fill cfg from the robot descriptor without overwriting explicit values; no-op without `robot_descriptor`."""
+    desc = load_descriptor(cfg, descriptor, xacro_args)
+    if desc is None:
         return cfg
-    loader = import_loader()
-    desc = loader.load(ref, args=dict(xacro_args or {}) or None)
-    print(f"Robot descriptor: {desc.robot_id} v{desc.version} ({desc.path})")
 
     files = cfg.setdefault("files_path", {})
     pkg = cfg.setdefault("ros_package_paths", {})

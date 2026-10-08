@@ -26,8 +26,25 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir))
 
 from utils.config import load_config
+from utils.descriptor import load_descriptor
+from utils.ros2_control import controllers_yaml_path, write_controllers_yaml
 from utils.isaac_wrappers import import_urdf, apply_drive_settings, apply_initial_pose, apply_friction, apply_sensor_settings
 from utils.isaac_ros2 import create_ros2_bridge
+
+def write_ros2_control_yaml(config_data, args, xacro_args, usd_path):
+    """Write the descriptor's ros2_control YAML next to the USD and record it in ros2.control.config_path."""
+    ros = config_data.get("ros2", {})
+    control = ros.get("control") or {}
+    if not ros.get("enabled", False) or control.get("enabled") is False:
+        return
+    desc = load_descriptor(config_data, args.descriptor, xacro_args, quiet=True)
+    if desc is None:
+        print("Note: ros2_control needs a robot_descriptor; using the OmniGraph controller graphs")
+        control.pop("config_path", None)
+        return
+    control["config_path"] = controllers_yaml_path(config_data, usd_path)
+    ros["control"] = control
+    write_controllers_yaml(config_data, desc, usd_path)
 
 def main():
     parser = argparse.ArgumentParser(description="Convert ROS URDF to Isaac Sim USD with Physics/Sensor configuration.")
@@ -78,6 +95,7 @@ def main():
         apply_initial_pose(stage, prim_path, config_data, os.path.abspath(urdf_path))
         apply_friction(stage, prim_path, config_data, os.path.abspath(urdf_path))
         apply_sensor_settings(stage, prim_path, config_data)
+        write_ros2_control_yaml(config_data, args, xacro_args, os.path.abspath(usd_path))
         create_ros2_bridge(stage, prim_path, config_data)
 
         # Save 

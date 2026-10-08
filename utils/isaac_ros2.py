@@ -1,8 +1,11 @@
+import os
+
 import omni.graph.core as og
 from isaacsim.core.utils.extensions import enable_extension
 from pxr import Usd, UsdPhysics, Sdf
 from .isaac_wrappers import lidar_implementation
 from .isaac_version import IS_6
+from . import ros2_control
 
 # Enable Extensions
 enable_extension("isaacsim.core.nodes")
@@ -32,6 +35,23 @@ def _frame_skip(settings, group):
 def _node_exists(type_name):
     return og.get_node_type(type_name).is_valid()
 
+def _ros2_control_yaml(ros_config):
+    """Controller YAML of the ROS2_Control graph, or None to use the OmniGraph controller graphs."""
+    control = ros_config.get("control") or {}
+    if control.get("enabled") is False:
+        return None
+    explicit = control.get("enabled") is True
+    if not (ros2_control.enable() and _node_exists(ros2_control.NODE_TYPE)):
+        if explicit:
+            print(f"  Warning: ros2.control.enabled but {ros2_control.NODE_TYPE} is unavailable; using the OmniGraph controllers")
+        return None
+    path = control.get("config_path")
+    if not (path and os.path.isfile(path)):
+        if explicit:
+            print(f"  Warning: no ros2_control YAML ({path or 'needs a robot_descriptor'}); using the OmniGraph controllers")
+        return None
+    return path
+
 def create_ros2_bridge(stage, robot_prim_path, config_data):
     ros_config = config_data.get("ros2", {})
     if not ros_config.get("enabled", False):
@@ -53,6 +73,11 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
                 target_path = prim.GetPath().pathString
                 print(f"  Found Articulation Root: {target_path}")
                 break
+
+    # ros2_control hosts the joint_state_broadcaster and every controller (diff_drive included)
+    control_yaml = _ros2_control_yaml(ros_config)
+    control_types = ros2_control.controller_types(control_yaml) if control_yaml else {}
+    base_by_control = ros2_control.DIFF_DRIVE in control_types.values()
 
     # ========================================================================
     # TF PUBLISHER GRAPH
@@ -111,7 +136,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
     # ========================================================================
     # JOINT STATE PUBLISHER GRAPH
     # ========================================================================
-    if ros_config.get("publish_joint_states", True):
+    if ros_config.get("publish_joint_states", True) and not control_yaml:
         graph_path = f"{robot_prim_path}/ROS2_JointStates"
         if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
 
@@ -163,7 +188,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
     # 3. MOBILE BASE GRAPH
     # ========================================================================
     mb_config = ros_config.get("mobile_base", {})
-    if mb_config.get("enabled", False):
+    if mb_config.get("enabled", False) and not base_by_control:
         graph_path = f"{robot_prim_path}/ROS2_MobileBase"
         if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
 
@@ -543,7 +568,7 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
     # ========================================================================
     # JOINT CONTROLLERS
     # ========================================================================
-    controllers = ros_config.get("controllers", {})
+    controllers = {} if control_yaml else ros_config.get("controllers", {})
     for ctrl_name, ctrl_cfg in controllers.items():
         graph_path = f"{robot_prim_path}/ROS2_Ctrl_{ctrl_name}"
         if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
@@ -581,5 +606,34 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         )
 
         print(f"  + Controller {ctrl_name} Graph Built Successfully. Topic: {ctrl_cfg.get('topic', f'{ctrl_name}/command')}")
+
+    # ========================================================================
+    # ROS2_CONTROL (in-process controller_manager, Isaac 6.1+)
+    # ========================================================================
+    if control_yaml:
+        graph_path = f"{robot_prim_path}/ROS2_Control"
+        if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
+
+        og.Controller.edit(
+            {"graph_path": graph_path, "evaluator_name": "execution"},
+            {
+                keys.CREATE_NODES: [
+                    ("OnTick", "omni.graph.action.OnPlaybackTick"),
+                    ("ControlManager", ros2_control.NODE_TYPE),
+                ],
+                keys.SET_VALUES: [
+                    ("ControlManager.inputs:targetPrim", [Sdf.Path(target_path)]),
+                    ("ControlManager.inputs:controllerConfig", control_yaml),
+                    ("ControlManager.inputs:namespace", ros_config.get("namespace", "")),
+                    ("ControlManager.inputs:publishRobotDescription", True),
+                    ("ControlManager.inputs:useSimTime", True),
+                ],
+                keys.CONNECT: [
+                    ("OnTick.outputs:tick", "ControlManager.inputs:execIn"),
+                ],
+            },
+        )
+
+        print(f"  + ros2_control Graph Built Successfully. {control_yaml}: {', '.join(control_types)}")
 
     print(f"--- All ROS 2 Action Graphs Built Successfully ---")

@@ -3,6 +3,7 @@ import os
 import yaml
 
 from utils.descriptor import apply_descriptor
+from utils.ros2_control import controllers_yaml_path
 
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
 
@@ -38,4 +39,11 @@ def load_config(robot=None, path=None, urdf=None, usd=None, package_paths=None, 
     for entry in package_paths or []:
         name, _, pkg_path = entry.partition("=")
         cfg.setdefault("ros_package_paths", {})[name] = pkg_path
-    return apply_descriptor(cfg, descriptor, xacro_args)
+    apply_descriptor(cfg, descriptor, xacro_args)
+    ros = cfg.get("ros2") or {}
+    control = ros.get("control") or {}
+    if ros and control.get("enabled") is not False and cfg.get("files_path", {}).get("usd"):
+        # ros2_control YAML written next to the USD by the CLI, referenced by the ROS2_Control graph
+        control["config_path"] = controllers_yaml_path(cfg)
+        ros["control"] = control
+    return cfg
