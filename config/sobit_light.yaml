@@ -85,14 +85,3 @@ ros2:
   domain_id: 0
   publish_tf: true
   publish_joint_states: true
-
-  # Kachaka differential base: radius 0.045 / separation 0.200 m from _kachaka.urdf.xacro (wheel cylinders, joints at y=+-0.100), same as gz_controllers.yaml wheel_controller
-  mobile_base:
-    enabled: true
-    wheel_joints: [base_l_drive_wheel_joint, base_r_drive_wheel_joint]
-    wheel_radius: 0.045
-    wheel_base: 0.200
-    topic_cmd_vel: manual_control/cmd_vel # descriptor mobile_base.command_topic
-    topic_odom: odometry/odometry # descriptor mobile_base.odom_topic
-    frame_odom: odom
-    frame_base: base_footprint
