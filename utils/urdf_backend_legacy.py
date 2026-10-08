@@ -11,7 +11,7 @@ def import_urdf(urdf_path, usd_path):
     import_config.import_inertia_tensor = True
     import_config.fix_base = False
     import_config.make_default_prim = True
-    import_config.create_physics_scene = True
+    import_config.create_physics_scene = False
     import_config.distance_scale = 1.0 
 
     # Set default drive to Position (stiff) - overwritten by YAML later

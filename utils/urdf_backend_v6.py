@@ -7,13 +7,6 @@ from isaacsim.asset.importer.urdf import URDFImporter, URDFImporterConfig
 
 from .package_paths import resolve_package_paths
 
-def _ensure_physics_scene(stage):
-    if any(p.IsA(UsdPhysics.Scene) for p in stage.Traverse()):
-        return
-    scene = UsdPhysics.Scene.Define(stage, "/physicsScene")
-    scene.CreateGravityDirectionAttr().Set((0.0, 0.0, -1.0))
-    scene.CreateGravityMagnitudeAttr().Set(9.81 / UsdGeom.GetStageMetersPerUnit(stage))
-
 def _disable_self_collision(stage, prim_path):
     # the 6.1 importer leaves enabledSelfCollisions unauthored (PhysX default is on)
     from pxr import PhysxSchema
@@ -84,7 +77,6 @@ def import_urdf(urdf_path, usd_path, config_data=None):
     vs = stage.GetPrimAtPath(prim_path).GetVariantSets()
     if vs.HasVariantSet("Physics"):
         vs.GetVariantSet("Physics").SetVariantSelection("physx")
-    _ensure_physics_scene(stage)
     if not allow_self_collision:
         _disable_self_collision(stage, prim_path)
     stage.GetRootLayer().Save()
