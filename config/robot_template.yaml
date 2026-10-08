@@ -52,6 +52,10 @@ joints:
   #   stiffness: 800.0
   #   damping: 50.0
 
+# Initial pose (SI: rad / m), optional: overrides/extends the <ros2_control> initial_value entries of the URDF
+# initial_pose:
+#   arm_shoulder_pitch_joint: -1.5707963
+
 # Sensor Configuration ("camera", "lidar", "imu" supported)
 sensors:
   # RGB-D Camera (Single prim handles RGB, Depth, PointCloud)

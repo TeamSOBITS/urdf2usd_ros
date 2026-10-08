@@ -163,6 +163,10 @@ YAMLのゲインはSI単位です（回転関節: N·m/rad，N·m·s/rad，直�
 - **手動:** `mode` を省略して `default_drive.stiffness` / `damping` を指定すると全関節に同じ値を使います．個別の関節は `joints:` で上書きでき，autoモードでも上書きが優先されます．
 - **質量のないリンク:** `<inertial>` のないリンクにはPhysXが既定の質量（形状なしは1 kg，visualありは密度から算出）を割り当て，警告を表示します．URDFにinertialを追加してください．
 
+### 初期姿勢
+
+Isaacはすべての関節をURDFのゼロ姿勢で読み込むため，ロボットの一部が床下に入ることがあります．初期姿勢はURDFの `<ros2_control>`（`<state_interface name="position">` の `initial_value`，rad または m）から取得し，YAMLの任意のトップレベルキー `initial_pose: {関節名: 値}`（SI単位）で上書き・追加できます．回転関節の値はUSD用に度へ変換され，ドライブ目標とジョイント状態（`PhysicsJointStateAPI`）の両方に書き込まれるため，ロボットはその姿勢で開始し保持します．速度制御の関節はスキップされ，存在しない関節には警告が出ます．
+
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
 
