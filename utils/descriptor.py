@@ -93,7 +93,10 @@ def _sensor_defaults(desc, name, raw_names):
     for lidar in desc.lidars:
         if lidar.name == name:
             frame = desc.frame(lidar.frame)
-            return {"type": "lidar", "parent_link": frame, "frame_id": frame, "topic_lidar": lidar.scan_topic}
+            cfg = {"type": "lidar", "parent_link": frame, "frame_id": frame, "topic_lidar": lidar.scan_topic}
+            if lidar.points_topic:
+                cfg["topic_points"] = lidar.points_topic
+            return cfg
     for imu in desc.imus:
         if imu.name == name:
             frame = desc.frame(imu.frame)

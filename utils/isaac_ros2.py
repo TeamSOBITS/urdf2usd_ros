@@ -446,38 +446,53 @@ def create_ros2_bridge(stage, robot_prim_path, config_data):
         elif stype == "lidar" and lidar_implementation(settings) == "rtx":
             graph_path = f"{robot_prim_path}/ROS2_Lidar_{name}"
             if stage.GetPrimAtPath(graph_path): stage.RemovePrim(graph_path)
+            points_topic = settings.get("topic_points")  # optional PointCloud2 next to the LaserScan
 
+            nodes = [
+                ("OnTick", "omni.graph.action.OnPlaybackTick"),
+                ("ReadContext", "isaacsim.ros2.bridge.ROS2Context"),
+                ("RunOnce", "isaacsim.core.nodes.OgnIsaacRunOneSimulationFrame"),
+                ("CreateRP", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
+                ("PubLidar", "isaacsim.ros2.bridge.ROS2RtxLidarHelper"),
+            ]
+            values = [
+                ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
+                ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
+                ("CreateRP.inputs:cameraPrim", [Sdf.Path(full_path)]),
+                ("PubLidar.inputs:type", "laser_scan"),
+                ("PubLidar.inputs:nodeNamespace", ros_config.get("namespace", "")),
+                ("PubLidar.inputs:topicName", settings.get("topic_lidar", f"{name}/scan")),
+                ("PubLidar.inputs:frameId", settings.get("frame_id", name)),
+                ("PubLidar.inputs:resetSimulationTimeOnStop", settings.get("reset_sim_time_on_stop", reset_stop)),
+            ]
+            connects = [
+                ("OnTick.outputs:tick", "RunOnce.inputs:execIn"),
+                ("RunOnce.outputs:step", "CreateRP.inputs:execIn"),
+                ("OnTick.outputs:tick", "PubLidar.inputs:execIn"),
+                ("ReadContext.outputs:context", "PubLidar.inputs:context"),
+                ("CreateRP.outputs:renderProductPath", "PubLidar.inputs:renderProductPath"),
+            ]
+            if points_topic:
+                nodes.append(("PubPoints", "isaacsim.ros2.bridge.ROS2RtxLidarHelper"))
+                values += [
+                    ("PubPoints.inputs:type", "point_cloud"),
+                    ("PubPoints.inputs:nodeNamespace", ros_config.get("namespace", "")),
+                    ("PubPoints.inputs:topicName", points_topic),
+                    ("PubPoints.inputs:frameId", settings.get("frame_id", name)),
+                    ("PubPoints.inputs:resetSimulationTimeOnStop", settings.get("reset_sim_time_on_stop", reset_stop)),
+                ]
+                connects += [
+                    ("OnTick.outputs:tick", "PubPoints.inputs:execIn"),
+                    ("ReadContext.outputs:context", "PubPoints.inputs:context"),
+                    ("CreateRP.outputs:renderProductPath", "PubPoints.inputs:renderProductPath"),
+                ]
             og.Controller.edit(
                 {"graph_path": graph_path, "evaluator_name": "execution"},
-                {
-                    keys.CREATE_NODES: [
-                        ("OnTick", "omni.graph.action.OnPlaybackTick"),
-                        ("ReadContext", "isaacsim.ros2.bridge.ROS2Context"),
-                        ("RunOnce", "isaacsim.core.nodes.OgnIsaacRunOneSimulationFrame"),
-                        ("CreateRP", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
-                        ("PubLidar", "isaacsim.ros2.bridge.ROS2RtxLidarHelper"),
-                    ],
-                    keys.SET_VALUES: [
-                        ("ReadContext.inputs:domain_id", ros_config.get("domain_id", 0)),
-                        ("ReadContext.inputs:useDomainIDEnvVar", ros_config.get("use_domain_id_env", False)),
-                        ("CreateRP.inputs:cameraPrim", [Sdf.Path(full_path)]),
-                        ("PubLidar.inputs:type", "laser_scan"),
-                        ("PubLidar.inputs:nodeNamespace", ros_config.get("namespace", "")),
-                        ("PubLidar.inputs:topicName", settings.get("topic_lidar", f"{name}/scan")),
-                        ("PubLidar.inputs:frameId", settings.get("frame_id", name)),
-                        ("PubLidar.inputs:resetSimulationTimeOnStop", settings.get("reset_sim_time_on_stop", reset_stop)),
-                    ],
-                    keys.CONNECT: [
-                        ("OnTick.outputs:tick", "RunOnce.inputs:execIn"),
-                        ("RunOnce.outputs:step", "CreateRP.inputs:execIn"),
-                        ("OnTick.outputs:tick", "PubLidar.inputs:execIn"),
-                        ("ReadContext.outputs:context", "PubLidar.inputs:context"),
-                        ("CreateRP.outputs:renderProductPath", "PubLidar.inputs:renderProductPath"),
-                    ]
-                }
+                {keys.CREATE_NODES: nodes, keys.SET_VALUES: values, keys.CONNECT: connects},
             )
 
-            print(f"  + RTX Lidar {name} Graph Built Successfully. Topic: {settings.get('topic_lidar', f'{name}/scan')}")
+            print(f"  + RTX Lidar {name} Graph Built Successfully. Topic: {settings.get('topic_lidar', f'{name}/scan')}"
+                  + (f", points: {points_topic}" if points_topic else ""))
 
         elif stype == "lidar":
             graph_path = f"{robot_prim_path}/ROS2_Lidar_{name}"

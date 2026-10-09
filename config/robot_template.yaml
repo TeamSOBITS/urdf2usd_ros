@@ -111,6 +111,7 @@ sensors:
     draw_lines: false
     high_lod: false # Use high level of detail for visualization (3D Lidar only)
     topic: "lidar/scan"
+    # topic_points: "lidar/scan/points" # RTX only: also publish a PointCloud2 (filled from the descriptor points_topic)
 
   # IMU
   imu_sensor:
