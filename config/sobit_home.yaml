@@ -63,17 +63,14 @@ sensors:
     rotation: [180, 0, 0]
     visible: false
 
-  lidar_merged:
+  # Two UST lidars like the real robot; the ROS side merges them into lidar_scan (merge_2_scan.launch.py)
+  lidar_front:
     implementation: "rtx"
     profile: "Example_Rotary_2D"
 
-  head_camera_imu:
-    read_gravity: true
-    use_latest_data: false
-    publish_angular_velocity: true
-    publish_linear_acceleration: true
-    publish_orientation: true
-    update_rate: 100.0 # Hz
+  lidar_back:
+    implementation: "rtx"
+    profile: "Example_Rotary_2D"
 
 ros2:
   enabled: true

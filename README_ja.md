@@ -139,7 +139,7 @@ ROS 2対応のモバイルマニピュレータ用URDFを，物理駆動設定�
 
 ### ロボットディスクリプタ
 
-YAMLに`robot_descriptor: <robot_id>`を書くと，ロボット固有の情報を共有の`<robot_id>.robot.yaml`（[sobits_robot_descriptor](../sobits_robot_descriptor)）から取得します：`ros2.namespace`，`ros2.topic_joint_states`，`ros2.controllers`，`files_path.urdf`（プレースホルダーのときのみ`<description share>/<urdf.urdf>`），および各`sensors.<name>`の`type`，`parent_link`，`frame_id`（オプティカルフレーム），`image_width/height`，`update_rate`，`rgb`/`depth`/`pcl`とLiDAR/IMUのトピック，カメラのストリームごとの`frame_id`と`info_topic`（camera_info），カラーストリームの`compressed`/`compressed_topic`（IsaacのGPUエンコーダによるh264の`sensor_msgs/CompressedImage`．hevcは`rgb.compressed_codec: hevc`．深度の圧縮はありません）です．YAMLに明示した値が常に優先されます．`sensors`はディスクリプタのcamera/lidar/imu名をキーとし，Isaac専用のパラメータ（アパーチャ，クリッピング，回転，LiDARプロファイル，IMUフラグ）のみを記述します．未知の名前はディスクリプタのセンサー一覧を表示して中断し，`requires`で除外されたセンサー（例：`--xacro-arg head_cam_type=realsense`のOrbbec IMU）は通知を出して除外されます．キーのない設定は従来どおり動作します．
+YAMLに`robot_descriptor: <robot_id>`を書くと，ロボット固有の情報を共有の`<robot_id>.robot.yaml`（[sobits_robot_descriptor](../sobits_robot_descriptor)）から取得します：`ros2.namespace`，`ros2.topic_joint_states`，`ros2.controllers`，`files_path.urdf`（プレースホルダーのときのみ`<description share>/<urdf.urdf>`），および各`sensors.<name>`の`type`，`parent_link`，`frame_id`（オプティカルフレーム），`image_width/height`，`update_rate`，`rgb`/`depth`/`pcl`とLiDAR/IMUのトピック（LiDARの`points_topic`はRTXグラフにPointCloud2の配信を追加），カメラのストリームごとの`frame_id`と`info_topic`（camera_info），カラーストリームの`compressed`/`compressed_topic`（IsaacのGPUエンコーダによるh264の`sensor_msgs/CompressedImage`．hevcは`rgb.compressed_codec: hevc`．深度の圧縮はありません）です．YAMLに明示した値が常に優先されます．`sensors`はディスクリプタのcamera/lidar/imu名をキーとし，Isaac専用のパラメータ（アパーチャ，クリッピング，回転，LiDARプロファイル，IMUフラグ）のみを記述します．未知の名前はディスクリプタのセンサー一覧を表示して中断し，`requires`で除外されたセンサー（例：`--xacro-arg head_cam_type=realsense`のOrbbec IMU）は通知を出して除外されます．キーのない設定は従来どおり動作します．
 
 ロボットのUSDには`PhysicsScene`も`/clock`パブリッシャーも含まれません．どちらも環境側の役割です（`utils/isaac_world.py`の`ensure_root_physics_scene`，`add_clock_graph`）．Isaac 6.1では，唯一のシーンが参照レイヤー由来だとシミュレーション時間が物理ステップごとに2ステップ進むため，ワールドを組むときはシーンをルートレイヤーに置いてください．`ros2.reset_sim_time_on_stop`（既定false，単調な時間）は，すべてのシミュレーション時間ノードとカメラ/LiDARヘルパーの`resetOnStop`を設定します．
 
@@ -151,7 +151,7 @@ YAMLに`robot_descriptor: <robot_id>`を書くと，ロボット固有の情報�
 ```sh
 $ SOBITS_ROBOT_DESCRIPTOR_PATH=/path/to/sobit_home_description/config python3 scripts/urdf2usd_ros.py --robot sobit_home
 ```
-`config/sobit_home.yaml`が基準です．SOBIT HOMEの`tests/convert_and_check.py`は32項目をチェックします（ヘッドカメラ，両ハンドカメラ，統合LiDAR，IMUを含む）．ros2_controlの2項目（`ros2_control config`，`ros2_control graph`）を追加する前は30/30でパスしており，この2項目はSOBIT HOMEではまだ実行していません． `config/sobit_light.yaml`はSOBIT LIGHT用の同形式の設定です（Kachaka差動駆動ベースはros2_controlの`wheel_controller`，[ros2_control](#ros2_control)参照，URDFは`enable_gz:=True`で生成し`file://`メッシュパスを`package://`に置換）．
+`config/sobit_home.yaml`が基準です．SOBIT HOMEは`tests/convert_and_check.py`の32項目（ヘッドカメラ，両ハンドカメラ，前後LiDARと各点群，ros2_controlの設定とグラフ）を32/32でパスします．2つのスキャンは実機と同じくROS側（`sobit_home_bringup`の`merge_2_scan.launch.py`）が`lidar_scan`に統合し，Orbbec IMUはドライバが配信しないためエクスポートしません． `config/sobit_light.yaml`はSOBIT LIGHT用の同形式の設定です（Kachaka差動駆動ベースはros2_controlの`wheel_controller`，[ros2_control](#ros2_control)参照，URDFは`enable_gz:=True`で生成し`file://`メッシュパスを`package://`に置換）．
 
 ### ros2_control
 
