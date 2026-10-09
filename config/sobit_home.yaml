@@ -75,6 +75,7 @@ sensors:
 ros2:
   enabled: true
   domain_id: 0
+  use_domain_id_env: true # every ROS2Context follows the Isaac process' ROS_DOMAIN_ID (same as its controller_manager)
   publish_tf: true
   publish_joint_states: true
 

@@ -129,6 +129,7 @@ sensors:
 ros2:
   enabled: true
   domain_id: 0 # ROS_DOMAIN_ID
+  use_domain_id_env: false # true: ROS2Context nodes read ROS_DOMAIN_ID from the Isaac process instead (domain_id ignored)
   namespace: ""
   reset_sim_time_on_stop: false # SimTime/camera/lidar resetOnStop; keep false (monotonic time)
 
