@@ -103,11 +103,12 @@ def _collides(g):
     return g.get("contype", "1") != "0" or g.get("conaffinity", "1") != "0"
 
 def _style_geoms(root, stage):
-    """Visual geoms: rgba from the bound USD material, group 1; colliders: group 3."""
+    """Visual geoms: rgba from the bound USD material, group 1; colliders: group 3. A mu 0 collider (URDF mu1 0, e.g. the
+    Kachaka body resting on the floor) gets priority 1 + condim 1: MuJoCo takes a pair's max friction, not the min."""
     from pxr import Usd, UsdGeom
     prims = {p.GetPath().pathString: p for p in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies())
              if p.IsA(UsdGeom.Gprim) or p.IsA(UsdGeom.Subset)}
-    stats = {"material": 0, "default": 0, "collision": 0}
+    stats = {"material": 0, "default": 0, "collision": 0, "frictionless": 0}
     for g in root.iter("geom"):
         if g.get("type") == "plane":
             continue
@@ -115,6 +116,10 @@ def _style_geoms(root, stage):
             g.set("group", "3")
             g.set("rgba", "0.9 0.2 0.2 0.4")
             stats["collision"] += 1
+            if float(g.get("friction", "1").split()[0]) == 0:
+                g.set("priority", "1")
+                g.set("condim", "1")
+                stats["frictionless"] += 1
             continue
         prim = prims.get(re.sub(r"_\d+$", "", g.get("name", "")))
         c = _material_color(prim) if prim else None
@@ -477,5 +482,5 @@ def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_pr
                 position=act["position"], velocity=act["velocity"], mimic_dropped=act["mimic_dropped"], cameras=sens["cameras"],
                 lidars=sens["lidars"], lidar_plugins=sens["plugin_lidars"], rangefinders=sens["rangefinders"],
                 ray_transparent=sens["ray_transparent"], colliders=stats["collision"], rgba_from_material=stats["material"],
-                rgba_default=stats["default"],
+                rgba_default=stats["default"], frictionless=stats["frictionless"],
                 size_mb=round(os.path.getsize(mjcf_path) / 1e6, 1))
