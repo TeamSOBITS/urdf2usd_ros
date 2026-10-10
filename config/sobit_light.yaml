@@ -34,9 +34,10 @@ joints:
 # Camera focal_length = 20.955 / (2 tan(HFOV/2)); vertical_aperture = 20.955 * height / width
 sensors:
   # RealSense D435 colour, 1280x720, HFOV 69.4 deg (gz horizontal_fov 1.21126, gazebo.urdf.xacro)
+  # RealSense D435 as the driver runs it: colour default 640x480 @ 30, depth 640x480 @ 15 (4:3 -> vertical aperture 15.716)
   head_camera:
     horizontal_aperture: 20.955
-    vertical_aperture: 11.787
+    vertical_aperture: 15.716
     focal_length: 15.131
     clipping_range: [0.1, 20.0]
     rotation: [180, 0, 0]
