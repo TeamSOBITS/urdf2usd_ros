@@ -43,9 +43,10 @@ sensors:
     visible: false
 
   # RealSense D405, 640x480, HFOV 87 deg (datasheet; the gz sensor uses 69.4 deg)
+  # RealSense D405 as the driver runs it: 848x480 @ 5 Hz, HFOV 87 deg (aspect 848/480 -> vertical aperture 11.861)
   hand_camera:
     horizontal_aperture: 20.955
-    vertical_aperture: 15.716
+    vertical_aperture: 11.861
     focal_length: 11.041
     clipping_range: [0.1, 20.0]
     rotation: [180, 0, 0]
