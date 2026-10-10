@@ -227,7 +227,7 @@ def _qrot(q, v):
     return _qmul(_qmul(q, (0.0, *v)), (w, -u[0], -u[1], -u[2]))[1:]
 
 LIDAR_DEFAULTS = {"angle_min": -2.25, "angle_max": 2.25, "angle_increment": 0.00872665, "range_min": 0.02, "range_max": 30.0,
-                  "rangefinders": False}
+                  "ray_start": 0.03, "rangefinders": False}
 
 def _add_sensors(root, stage, sensors):
     """Cameras on the optical frames and rangefinder lidar fans (RangefinderLidarPlugin); returns per-kind counts."""
@@ -270,15 +270,16 @@ def _add_sensors(root, stage, sensors):
                     sensor_el = ET.SubElement(root, "sensor")
             for i in range(n):
                 a = p["angle_min"] + i * p["angle_increment"]
-                ET.SubElement(body, "site", name=f"{name}-{i}", pos=_fmt(pos),
-                              zaxis=_fmt(_qrot(quat, (math.cos(a), math.sin(a), 0.0))), size="0.001")
+                z = _qrot(quat, (math.cos(a), math.sin(a), 0.0))
+                ET.SubElement(body, "site", name=f"{name}-{i}", pos=_fmt(c + p["ray_start"] * zc for c, zc in zip(pos, z)),
+                              zaxis=_fmt(z), size="0.001")
                 ET.SubElement(sensor_el, "rangefinder", name=f"{name}-{i}", site=f"{name}-{i}", cutoff=f"{p['range_max']:.9g}")
             counts["rangefinders"] += n
         if custom is None:
             custom = root.find("custom")
             if custom is None:
                 custom = ET.SubElement(root, "custom")
-        keys = ("angle_min", "angle_max", "angle_increment", "range_min", "range_max")
+        keys = ("angle_min", "angle_max", "angle_increment", "range_min", "range_max", "ray_start")
         ET.SubElement(custom, "numeric", name=f"{name}_scan", data=_fmt(p[k] for k in keys))
         print(f"  + lidar site {name} on {body.get('name')}: {n} rays{' (rangefinders)' if p.get('rangefinders') else ''} "
               + " ".join(f"{k}={p[k]:g}" for k in keys))
@@ -292,13 +293,12 @@ def _ray_geom(mj, data, g, pnt, vec):
     return mujoco.mju_rayGeom(data.geom_xpos[g], data.geom_xmat[g], mj.geom_size[g], pnt, vec, mj.geom_type[g])
 
 def _clear_lidar_dead_zone(root, mj):
-    """Alpha 0 (ignored by mj_ray/rangefinders) on geoms welded to a lidar site that enclose it or sit within range_min.
-
-    The site's own body is skipped: the scan plugin and rangefinders exclude it."""
+    """Alpha 0 (ignored by mj_ray/rangefinders) on collision-only geoms welded to a lidar that rays from
+    ray_start still hit within range_min (or that enclose that start); rendered ones only get a warning."""
     import math
     import mujoco
     import numpy as np
-    data, cleared = mujoco.MjData(mj), set()
+    data, cleared, warned = mujoco.MjData(mj), set(), set()
     mujoco.mj_forward(mj, data)
     hit = np.zeros(1, np.int32)
     for k in range(mj.nnumeric):
@@ -306,26 +306,33 @@ def _clear_lidar_dead_zone(root, mj):
         site = mujoco.mj_name2id(mj, mujoco.mjtObj.mjOBJ_SITE, name[:-5]) if name.endswith("_scan") else -1
         if site < 0:
             continue
-        a_min, a_max, inc, range_min, _ = mj.numeric_data[mj.numeric_adr[k]:mj.numeric_adr[k] + 5]
-        weld = mj.body_weldid[mj.site_bodyid[site]]
-        pnt, rot = data.site_xpos[site].copy(), data.site_xmat[site].reshape(3, 3)
+        a_min, a_max, inc, range_min, _, ray_start = mj.numeric_data[mj.numeric_adr[k]:mj.numeric_adr[k] + 6]
+        body = mj.site_bodyid[site]
+        origin, rot = data.site_xpos[site].copy(), data.site_xmat[site].reshape(3, 3)
         for i in range(int((a_max - a_min) / inc) + 1):
             a = a_min + i * inc
             vec = rot @ np.array([math.cos(a), math.sin(a), 0.0])
+            pnt = origin + ray_start * vec
             while True:
-                r = mujoco.mj_ray(mj, data, pnt, vec, None, 1, mj.site_bodyid[site], hit)
+                r = mujoco.mj_ray(mj, data, pnt, vec, None, 1, body, hit)
                 g = int(hit[0])
-                if g < 0 or mj.body_weldid[mj.geom_bodyid[g]] != weld:
+                if g < 0 or mj.body_weldid[mj.geom_bodyid[g]] != mj.body_weldid[body]:
                     break
                 if r >= range_min and _ray_geom(mj, data, g, pnt, -vec) < 0:
                     break
+                gname = mujoco.mj_id2name(mj, mujoco.mjtObj.mjOBJ_GEOM, g)
+                if mj.geom_group[g] < 3:
+                    if gname not in warned:
+                        print(f"  ! {name[:-5]}: rendered geom {gname} hit within range_min from ray_start, left visible")
+                        warned.add(gname)
+                    break
                 mj.geom_rgba[g, 3] = 0
-                cleared.add(mujoco.mj_id2name(mj, mujoco.mjtObj.mjOBJ_GEOM, g))
+                cleared.add(gname)
     for g in root.iter("geom"):
         if g.get("name") in cleared:
             rgba = g.get("rgba", "0.5 0.5 0.5 1").split()
             g.set("rgba", " ".join(rgba[:3] + ["0"]))
-            print(f"  ~ ray-transparent (encloses a lidar origin or within its range_min): {g.get('name')}")
+            print(f"  ~ ray-transparent collider (hit within range_min from a lidar's ray_start): {g.get('name')}")
     return len(cleared)
 
 def usd_initial_pose(stage):

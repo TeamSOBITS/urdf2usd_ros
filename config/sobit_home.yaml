@@ -81,14 +81,16 @@ sensors:
   lidar_front:
     implementation: "rtx"
     profile: "Example_Rotary_2D"
-    # MJCF scan site + params (defaults shown); rangefinders: true also adds a per-step rangefinder fan (slow)
-    # mujoco: {angle_min: -2.25, angle_max: 2.25, angle_increment: 0.00872665, range_min: 0.02, range_max: 30.0, rangefinders: false}
+    # MJCF scan site + params (defaults shown); rays start ray_start m out (clears the housing);
+    # rangefinders: true also adds a per-step rangefinder fan (slow)
+    # mujoco: {angle_min: -2.25, angle_max: 2.25, angle_increment: 0.00872665, range_min: 0.02, range_max: 30.0, ray_start: 0.03, rangefinders: false}
 
   lidar_back:
     implementation: "rtx"
     profile: "Example_Rotary_2D"
-    # MJCF scan site + params (defaults shown); rangefinders: true also adds a per-step rangefinder fan (slow)
-    # mujoco: {angle_min: -2.25, angle_max: 2.25, angle_increment: 0.00872665, range_min: 0.02, range_max: 30.0, rangefinders: false}
+    # MJCF scan site + params (defaults shown); rays start ray_start m out (clears the housing);
+    # rangefinders: true also adds a per-step rangefinder fan (slow)
+    # mujoco: {angle_min: -2.25, angle_max: 2.25, angle_increment: 0.00872665, range_min: 0.02, range_max: 30.0, ray_start: 0.03, rangefinders: false}
 
 ros2:
   enabled: true
