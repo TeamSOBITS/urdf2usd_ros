@@ -36,7 +36,8 @@ def main():
     pose = initial_pose(urdf if os.path.exists(urdf) else None, cfg)
     mjcf_path = args.mjcf or os.path.splitext(usd_path)[0] + ".xml"
     print(f"Exporting {usd_path} -> {mjcf_path}")
-    counts = export_mjcf(usd_path, mjcf_path, initial_pose=pose or None, ground=args.ground, keep_prims=args.keep_prim)
+    counts = export_mjcf(usd_path, mjcf_path, initial_pose=pose or None, ground=args.ground, keep_prims=args.keep_prim,
+                         sensors=cfg.get("sensors"))
     print("SUCCESS: MJCF " + " ".join(f"{k}={v}" for k, v in counts.items()))
 
 if __name__ == "__main__":

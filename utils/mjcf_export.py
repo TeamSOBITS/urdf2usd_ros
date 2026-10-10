@@ -161,6 +161,161 @@ def _rename(root, stage):
         if a.get("joint") and not a.get("name"):
             a.set("name", a.get("joint"))
 
+def _floats(text, n=10):
+    vals = [float(v) for v in (text or "").split()]
+    return vals + [0.0] * (n - len(vals))
+
+GENERAL_ONLY = ("biastype", "gainprm", "biasprm", "gaintype", "dyntype")
+
+def _typed_actuators(root):
+    """`general` servos (Newton's expansion) as `position` / `velocity` (mujoco_ros2_control reads `general` as effort)."""
+    actuator = root.find("actuator")
+    counts = {"position": 0, "velocity": 0, "general": 0}
+    for i, a in enumerate(list(actuator) if actuator is not None else []):
+        if a.tag != "general":
+            continue
+        g, b = _floats(a.get("gainprm")), _floats(a.get("biasprm"))
+        affine = a.get("biastype") == "affine" and a.get("gaintype", "fixed") == "fixed" and a.get("dyntype", "none") == "none"
+        if affine and b[1] != 0 and b[0] == 0 and abs(b[1] + g[0]) <= 1e-9 * abs(g[0]):
+            tag, gains = "position", {"kp": g[0], "kv": -b[2]}
+        elif affine and b[0] == b[1] == 0 and b[2] != 0 and abs(b[2] + g[0]) <= 1e-9 * abs(g[0]):
+            tag, gains = "velocity", {"kv": g[0]}
+        else:
+            counts["general"] += 1
+            continue
+        attrs = {k: v for k, v in a.attrib.items() if k not in GENERAL_ONLY}
+        attrs.update({k: f"{v:.9g}" for k, v in gains.items()})
+        actuator.remove(a)
+        actuator.insert(i, ET.Element(tag, attrs))
+        counts[tag] += 1
+    return counts
+
+def _usd_frames(stage):
+    """{prim name: prim} of the stage's Xform-like prims (link frames), first match wins."""
+    from pxr import Usd, UsdGeom
+    out = {}
+    for p in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies()):
+        if p.IsA(UsdGeom.Xformable) and not p.IsA(UsdGeom.Camera) and not _strip_type(p.GetTypeName()):
+            out.setdefault(p.GetName(), p)
+    return out
+
+def _frame_on_body(stage, frames, bodies, frame):
+    """(MJCF body, pos, quat wxyz) of USD frame `frame` relative to its nearest rigid-body ancestor (itself if a body)."""
+    from pxr import UsdGeom, UsdPhysics
+    prim = frames.get(frame)
+    if prim is None:
+        return None
+    body = prim
+    while body and body.IsValid() and not (body.HasAPI(UsdPhysics.RigidBodyAPI) and body.GetName() in bodies):
+        body = body.GetParent()
+    if not body or not body.IsValid():
+        return None
+    cache = UsdGeom.XformCache()
+    # USD row-vector matrices: frame_world = rel * body_world
+    rel = (cache.GetLocalToWorldTransform(prim) * cache.GetLocalToWorldTransform(body).GetInverse()).GetOrthonormalized()
+    q = rel.ExtractRotationQuat()
+    return bodies[body.GetName()], tuple(rel.ExtractTranslation()), (q.GetReal(), *q.GetImaginary())
+
+def _qmul(a, b):
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return (aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw)
+
+def _qrot(q, v):
+    w, *u = q
+    return _qmul(_qmul(q, (0.0, *v)), (w, -u[0], -u[1], -u[2]))[1:]
+
+LIDAR_DEFAULTS = {"angle_min": -2.25, "angle_max": 2.25, "angle_increment": 0.00872665, "range_min": 0.02, "range_max": 30.0}
+
+def _add_sensors(root, stage, sensors):
+    """Cameras on the optical frames and rangefinder lidar fans (RangefinderLidarPlugin); returns per-kind counts."""
+    import math
+    frames = _usd_frames(stage)
+    bodies = {b.get("name"): b for b in root.iter("body")}
+    counts = {"cameras": 0, "rangefinders": 0}
+    sensor_el = custom = None
+    for name, s in (sensors or {}).items():
+        kind = s.get("type")
+        if kind not in ("camera", "lidar"):
+            continue
+        frame = s.get("frame_id") or s.get("parent_link")
+        found = _frame_on_body(stage, frames, bodies, frame)
+        if found is None:
+            print(f"  ! {kind} '{name}': frame '{frame}' not found on any MJCF body, skipped")
+            continue
+        body, pos, quat = found
+        if kind == "camera":
+            # MuJoCo cameras look along -Z with +Y up; ROS optical frames along +Z with +Y down
+            cam = ET.SubElement(body, "camera", name=name, pos=_fmt(pos), quat=_fmt(_qmul(quat, (0.0, 1.0, 0.0, 0.0))))
+            va, fl = s.get("vertical_aperture"), s.get("focal_length")
+            if va and fl:
+                cam.set("fovy", f"{math.degrees(2 * math.atan(va / (2 * fl))):.6g}")
+            if s.get("image_width") and s.get("image_height"):
+                cam.set("resolution", f"{int(s['image_width'])} {int(s['image_height'])}")
+            counts["cameras"] += 1
+            print(f"  + camera {name} on {body.get('name')} fovy {cam.get('fovy', 'default')} {cam.get('resolution', '')}")
+            continue
+        p = {**LIDAR_DEFAULTS, **(s.get("mujoco") or {})}
+        n = int((p["angle_max"] - p["angle_min"]) / p["angle_increment"]) + 1
+        if sensor_el is None:
+            sensor_el = root.find("sensor")
+            if sensor_el is None:
+                sensor_el = ET.SubElement(root, "sensor")
+        for i in range(n):
+            a = p["angle_min"] + i * p["angle_increment"]
+            ET.SubElement(body, "site", name=f"{name}-{i}", pos=_fmt(pos),
+                          zaxis=_fmt(_qrot(quat, (math.cos(a), math.sin(a), 0.0))), size="0.001")
+            ET.SubElement(sensor_el, "rangefinder", name=f"{name}-{i}", site=f"{name}-{i}", cutoff=f"{p['range_max']:.9g}")
+        if custom is None:
+            custom = root.find("custom")
+            if custom is None:
+                custom = ET.SubElement(root, "custom")
+        keys = ("angle_min", "angle_max", "angle_increment", "range_min", "range_max")
+        ET.SubElement(custom, "numeric", name=f"{name}_scan", data=_fmt(p[k] for k in keys))
+        counts["rangefinders"] += n
+        print(f"  + lidar {name} on {body.get('name')}: {n} rays " + " ".join(f"{k}={p[k]:g}" for k in keys))
+    return counts
+
+def _ray_geom(mj, data, g, pnt, vec):
+    """Distance along `vec` to geom g alone (-1: no hit); a hit both ways means pnt is inside it."""
+    import mujoco
+    if int(mj.geom_type[g]) == mujoco.mjtGeom.mjGEOM_MESH:
+        return mujoco.mj_rayMesh(mj, data, g, pnt, vec)
+    return mujoco.mju_rayGeom(data.geom_xpos[g], data.geom_xmat[g], mj.geom_size[g], pnt, vec, mj.geom_type[g])
+
+def _clear_lidar_dead_zone(root, mj):
+    """Alpha 0 (ignored by rangefinders) on geoms welded to a lidar that enclose its origin or sit within range_min."""
+    import mujoco
+    import numpy as np
+    data, cleared = mujoco.MjData(mj), set()
+    mujoco.mj_forward(mj, data)
+    hit = np.zeros(1, np.int32)
+    for s in range(mj.nsensor):
+        if int(mj.sensor_type[s]) != mujoco.mjtSensor.mjSENS_RANGEFINDER:
+            continue
+        name = mujoco.mj_id2name(mj, mujoco.mjtObj.mjOBJ_SENSOR, s).rsplit("-", 1)[0]
+        n = mujoco.mj_name2id(mj, mujoco.mjtObj.mjOBJ_NUMERIC, f"{name}_scan")
+        range_min = mj.numeric_data[mj.numeric_adr[n] + 3] if n >= 0 else LIDAR_DEFAULTS["range_min"]
+        site = mj.sensor_objid[s]
+        weld = mj.body_weldid[mj.site_bodyid[site]]
+        vec = data.site_xmat[site].reshape(3, 3)[:, 2].copy()
+        while True:
+            r = mujoco.mj_ray(mj, data, data.site_xpos[site], vec, None, 1, mj.site_bodyid[site], hit)
+            g = int(hit[0])
+            if g < 0 or mj.body_weldid[mj.geom_bodyid[g]] != weld:
+                break
+            if r >= range_min and _ray_geom(mj, data, g, data.site_xpos[site], -vec) < 0:
+                break
+            mj.geom_rgba[g, 3] = 0
+            cleared.add(mujoco.mj_id2name(mj, mujoco.mjtObj.mjOBJ_GEOM, g))
+    for g in root.iter("geom"):
+        if g.get("name") in cleared:
+            rgba = g.get("rgba", "0.5 0.5 0.5 1").split()
+            g.set("rgba", " ".join(rgba[:3] + ["0"]))
+            print(f"  ~ ray-transparent (encloses a lidar origin or within its range_min): {g.get('name')}")
+    return len(cleared)
+
 def usd_initial_pose(stage):
     """{joint: drive target (SI)} for position-driven joints of the stage."""
     import math
@@ -222,11 +377,12 @@ def _home_key(mj, pose):
 def _fmt(values):
     return " ".join(f"{v:.9g}" for v in values)
 
-def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_prims=None):
+def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_prims=None, sensors=None):
     """Write `mjcf_path` from the robot USD; returns counts (bodies, joints, actuators, meshes, eq constraints).
 
     initial_pose: {joint: SI value} for the `home` keyframe (default: the USD drive targets).
     ground: keep a ground plane (standalone testing). keep_prims: prim paths never stripped.
+    sensors: config `sensors` (descriptor-filled) for the cameras and rangefinder lidars.
     """
     import mujoco
     import newton
@@ -255,9 +411,12 @@ def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_pr
         _drop_ground(root)
     stats = _style_geoms(root, stage)
     _rename(root, stage)
+    act = _typed_actuators(root)
+    sens = _add_sensors(root, stage, sensors)
     for old in root.findall("keyframe"):
         root.remove(old)
     mj = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
+    sens["ray_transparent"] = _clear_lidar_dead_zone(root, mj)
     qpos, ctrl = _home_key(mj, usd_initial_pose(stage) if initial_pose is None else initial_pose)
     key = ET.SubElement(ET.SubElement(root, "keyframe"), "key", name="home", qpos=_fmt(qpos))
     if mj.nu:
@@ -266,5 +425,6 @@ def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_pr
     tree.write(mjcf_path)
     mj = mujoco.MjModel.from_xml_path(mjcf_path)
     return dict(bodies=mj.nbody - 1, joints=mj.njnt, actuators=mj.nu, meshes=mj.nmesh, eq=mj.neq, geoms=mj.ngeom,
-                colliders=stats["collision"], rgba_from_material=stats["material"], rgba_default=stats["default"],
+                position=act["position"], velocity=act["velocity"], cameras=sens["cameras"],
+                rangefinders=sens["rangefinders"], ray_transparent=sens["ray_transparent"], colliders=stats["collision"], rgba_from_material=stats["material"], rgba_default=stats["default"],
                 size_mb=round(os.path.getsize(mjcf_path) / 1e6, 1))
