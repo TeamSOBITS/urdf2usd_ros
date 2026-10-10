@@ -71,6 +71,8 @@ sensors:
   lidar:
     implementation: "rtx"
     profile: "Example_Rotary_2D"
+    # Kachaka lidar as the gz sensor models it: 640 rays over +-2.487 rad, 0.1-10 m, 10 Hz
+    mujoco: {angle_min: -2.4870942, angle_max: 2.4870942, angle_increment: 0.0077846, range_min: 0.1, range_max: 10.0, update_rate: 10.0}
 
   imu:
     read_gravity: true
