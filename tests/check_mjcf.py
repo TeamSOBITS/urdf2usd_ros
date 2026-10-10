@@ -87,10 +87,16 @@ def main():
     joints, fixed_base = usd_joints(usd)
     free = [j for j in range(m.njnt) if int(m.jnt_type[j]) == mujoco.mjtJoint.mjJNT_FREE]
     n_free = 0 if fixed_base else 1
-    driven = [n for n, (_, d) in joints.items() if d]
+    # mimic followers (joint1 of an active joint equality) are driven only by the coupling
+    followers = {mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, m.eq_obj1id[e]) for e in range(m.neq)
+                 if int(m.eq_type[e]) == mujoco.mjtEq.mjEQ_JOINT and m.eq_active0[e] and m.eq_obj2id[e] >= 0}
+    driven = [n for n, (_, d) in joints.items() if d and n not in followers]
+    on_mimic = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, m.actuator_trnid[a][0]) for a in range(m.nu)
+                if mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, m.actuator_trnid[a][0]) in followers]
+    check("no actuator on mimic followers", not on_mimic, ", ".join(on_mimic) or f"{len(followers)} followers")
     check("nq/nv match USD joints", len(free) == n_free and m.nq == 7 * n_free + len(joints) and m.nv == 6 * n_free + len(joints),
           f"nq {m.nq}, nv {m.nv}; USD {len(joints)} movable joints, {'fixed' if fixed_base else 'free'} base")
-    check("nu matches USD drives", m.nu == len(driven), f"nu {m.nu}, USD drives {len(driven)}")
+    check("nu matches USD drives", m.nu == len(driven), f"nu {m.nu}, USD drives {len(driven)} (without mimic followers)")
     names = {mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, j) for j in range(m.njnt)}
     check("joint names = USD/URDF names", set(joints) <= names, ", ".join(sorted(set(joints) - names)) or f"{len(joints)} matched")
 

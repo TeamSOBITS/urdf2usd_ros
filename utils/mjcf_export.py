@@ -190,6 +190,17 @@ def _typed_actuators(root):
         counts[tag] += 1
     return counts
 
+def _drop_mimic_actuators(root):
+    """Remove actuators on joint-equality followers (joint1): a servo there fights the coupling to the leader."""
+    followers = {e.get("joint1") for eq in root.findall("equality") for e in eq.findall("joint")
+                 if e.get("joint2") and e.get("active", "true") == "true"}
+    actuator = root.find("actuator")
+    dropped = [a for a in (list(actuator) if actuator is not None else []) if a.get("joint") in followers]
+    for a in dropped:
+        actuator.remove(a)
+        print(f"  - actuator on mimic joint {a.get('joint')} dropped")
+    return len(dropped)
+
 def _usd_frames(stage):
     """{prim name: prim} of the stage's Xform-like prims (link frames), first match wins."""
     from pxr import Usd, UsdGeom
@@ -448,7 +459,8 @@ def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_pr
         _drop_ground(root)
     stats = _style_geoms(root, stage)
     _rename(root, stage)
-    act = _typed_actuators(root)
+    dropped = _drop_mimic_actuators(root)
+    act = dict(_typed_actuators(root), mimic_dropped=dropped)
     sens = _add_sensors(root, stage, sensors)
     for old in root.findall("keyframe"):
         root.remove(old)
@@ -462,7 +474,7 @@ def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_pr
     tree.write(mjcf_path)
     mj = mujoco.MjModel.from_xml_string(strip_plugins(ET.parse(mjcf_path).getroot()))
     return dict(bodies=mj.nbody - 1, joints=mj.njnt, actuators=mj.nu, meshes=mj.nmesh, eq=mj.neq, geoms=mj.ngeom,
-                position=act["position"], velocity=act["velocity"], cameras=sens["cameras"],
+                position=act["position"], velocity=act["velocity"], mimic_dropped=act["mimic_dropped"], cameras=sens["cameras"],
                 lidars=sens["lidars"], lidar_plugins=sens["plugin_lidars"], rangefinders=sens["rangefinders"],
                 ray_transparent=sens["ray_transparent"], colliders=stats["collision"], rgba_from_material=stats["material"],
                 rgba_default=stats["default"],
