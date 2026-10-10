@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from utils.mjcf_export import sanitised_stage  # first: registers Newton USD schemas before pxr opens a stage
+from utils.mjcf_export import sanitised_stage, strip_plugins  # first: registers Newton USD schemas before pxr opens a stage
 from utils.config import load_config
 from utils.drive_gains import resolve_gains, subtree_inertia
 from utils.initial_pose import initial_pose
@@ -65,12 +65,21 @@ def main():
     urdf = cfg["files_path"].get("urdf", "")
     path = args.mjcf or os.path.splitext(usd)[0] + ".xml"
 
-    m = mujoco.MjModel.from_xml_path(path)
+    tree = ET.parse(path).getroot()
+    try:
+        m = mujoco.MjModel.from_xml_path(path)
+        plugins = "plugins loaded"
+    except ValueError as e:
+        if "plugin" not in str(e):
+            raise
+        # mujoco.plugin.lidar is a ROS-side library; check the rest without it
+        tree = ET.fromstring(strip_plugins(tree))
+        m = mujoco.MjModel.from_xml_string(ET.tostring(tree, encoding="unicode"))
+        plugins = "plugins stripped (library not loaded)"
     print(f"MuJoCo {mujoco.__version__}: {path} ({os.path.getsize(path) / 1e6:.1f} MB)")
     print(f"  bodies {m.nbody - 1}, joints {m.njnt}, nq {m.nq}, nv {m.nv}, actuators {m.nu}, geoms {m.ngeom}, "
           f"meshes {m.nmesh}, eq {m.neq}, keys {m.nkey}, timestep {m.opt.timestep}")
-    check("load", True, f"MuJoCo {mujoco.__version__}")
-    tree = ET.parse(path).getroot()
+    check("load", True, f"MuJoCo {mujoco.__version__}, {plugins}")
     comp = tree.find("compiler")
     check("compiler angle radian", comp is not None and comp.get("angle") == "radian")
 

@@ -226,16 +226,35 @@ def _qrot(q, v):
     w, *u = q
     return _qmul(_qmul(q, (0.0, *v)), (w, -u[0], -u[1], -u[2]))[1:]
 
-LIDAR_DEFAULTS = {"angle_min": -2.25, "angle_max": 2.25, "angle_increment": 0.00872665, "range_min": 0.02, "range_max": 30.0,
-                  "ray_start": 0.03, "rangefinders": False}
+LIDAR_DEFAULTS = {"angle_min": -2.25, "angle_max": 2.25, "angle_increment": 0.00436332, "range_min": 0.02, "range_max": 30.0,
+                  "update_rate": 10.0, "rangefinders": False}
+LIDAR_PLUGIN = "mujoco.plugin.lidar"
+
+def _lidar_rays(a_min, a_max, inc):
+    """Ray count of mujoco.plugin.lidar (azimuth span / (N - 1) spacing)."""
+    return int(round((a_max - a_min) / inc)) + 1
+
+def _section(root, tag):
+    el = root.find(tag)
+    return el if el is not None else ET.SubElement(root, tag)
+
+def strip_plugins(root):
+    """XML string of `root` without the lidar extension and sensor plugins (for mujoco builds lacking the plugin)."""
+    root = ET.fromstring(ET.tostring(root))
+    for ext in root.findall("extension"):
+        root.remove(ext)
+    for sensor in root.findall("sensor"):
+        for pl in sensor.findall("plugin"):
+            sensor.remove(pl)
+    return ET.tostring(root, encoding="unicode")
 
 def _add_sensors(root, stage, sensors):
-    """Cameras on the optical frames and rangefinder lidar fans (RangefinderLidarPlugin); returns per-kind counts."""
+    """Cameras on the optical frames; lidars as a site + mujoco.plugin.lidar instance (or opt-in rangefinder fan)."""
     import math
     frames = _usd_frames(stage)
     bodies = {b.get("name"): b for b in root.iter("body")}
-    counts = {"cameras": 0, "lidars": 0, "rangefinders": 0}
-    sensor_el = custom = None
+    counts = {"cameras": 0, "lidars": 0, "plugin_lidars": 0, "rangefinders": 0}
+    lidar_plugin = None
     for name, s in (sensors or {}).items():
         kind = s.get("type")
         if kind not in ("camera", "lidar"):
@@ -258,31 +277,34 @@ def _add_sensors(root, stage, sensors):
             print(f"  + camera {name} on {body.get('name')} fovy {cam.get('fovy', 'default')} {cam.get('resolution', '')}")
             continue
         p = {**LIDAR_DEFAULTS, **(s.get("mujoco") or {})}
-        n = int((p["angle_max"] - p["angle_min"]) / p["angle_increment"]) + 1
-        # Scan origin for a plugin that ray-casts in the site's XY plane at publish rate
         ET.SubElement(body, "site", name=name, pos=_fmt(pos), quat=_fmt(quat), size="0.005")
         counts["lidars"] += 1
         if p.get("rangefinders"):
-            # Per-ray rangefinders run every physics step (~10 us per ray): opt-in only
-            if sensor_el is None:
-                sensor_el = root.find("sensor")
-                if sensor_el is None:
-                    sensor_el = ET.SubElement(root, "sensor")
+            # Legacy RangefinderLidarPlugin fan: runs every physics step (~10 us per ray)
+            n = int((p["angle_max"] - p["angle_min"]) / p["angle_increment"]) + 1
             for i in range(n):
                 a = p["angle_min"] + i * p["angle_increment"]
-                z = _qrot(quat, (math.cos(a), math.sin(a), 0.0))
-                ET.SubElement(body, "site", name=f"{name}-{i}", pos=_fmt(c + p["ray_start"] * zc for c, zc in zip(pos, z)),
-                              zaxis=_fmt(z), size="0.001")
-                ET.SubElement(sensor_el, "rangefinder", name=f"{name}-{i}", site=f"{name}-{i}", cutoff=f"{p['range_max']:.9g}")
+                ET.SubElement(body, "site", name=f"{name}-{i}", pos=_fmt(pos),
+                              zaxis=_fmt(_qrot(quat, (math.cos(a), math.sin(a), 0.0))), size="0.001")
+                ET.SubElement(_section(root, "sensor"), "rangefinder", name=f"{name}-{i}", site=f"{name}-{i}",
+                              cutoff=f"{p['range_max']:.9g}")
             counts["rangefinders"] += n
-        if custom is None:
-            custom = root.find("custom")
-            if custom is None:
-                custom = ET.SubElement(root, "custom")
-        keys = ("angle_min", "angle_max", "angle_increment", "range_min", "range_max", "ray_start")
-        ET.SubElement(custom, "numeric", name=f"{name}_scan", data=_fmt(p[k] for k in keys))
-        print(f"  + lidar site {name} on {body.get('name')}: {n} rays{' (rangefinders)' if p.get('rangefinders') else ''} "
-              + " ".join(f"{k}={p[k]:g}" for k in keys))
+        else:
+            n = _lidar_rays(p["angle_min"], p["angle_max"], p["angle_increment"])
+            if lidar_plugin is None:
+                lidar_plugin = ET.SubElement(_section(root, "extension"), "plugin", plugin=LIDAR_PLUGIN)
+            inst = ET.SubElement(lidar_plugin, "instance", name=name)
+            for key, value in (("resolution", f"{n} 1"), ("azimuth_range", _fmt((p["angle_min"], p["angle_max"]))),
+                               ("elevation_range", "0.0"), ("max_range", f"{p['range_max']:.9g}"),
+                               ("min_range", f"{p['range_min']:.9g}"), ("update_rate", f"{p['update_rate']:.9g}"),
+                               ("async", "0")):
+                ET.SubElement(inst, "config", key=key, value=value)
+            ET.SubElement(_section(root, "sensor"), "plugin", name=name, instance=name, objtype="site", objname=name)
+            counts["plugin_lidars"] += 1
+        keys = ("angle_min", "angle_max", "angle_increment", "range_min", "range_max")
+        ET.SubElement(_section(root, "custom"), "numeric", name=f"{name}_scan", data=_fmt(p[k] for k in keys))
+        print(f"  + lidar {name} on {body.get('name')}: {n} rays, {'rangefinders' if p.get('rangefinders') else LIDAR_PLUGIN} "
+              + " ".join(f"{k}={p[k]:g}" for k in keys + ("update_rate",)))
     return counts
 
 def _ray_geom(mj, data, g, pnt, vec):
@@ -293,12 +315,12 @@ def _ray_geom(mj, data, g, pnt, vec):
     return mujoco.mju_rayGeom(data.geom_xpos[g], data.geom_xmat[g], mj.geom_size[g], pnt, vec, mj.geom_type[g])
 
 def _clear_lidar_dead_zone(root, mj):
-    """Alpha 0 (ignored by mj_ray/rangefinders) on collision-only geoms welded to a lidar that rays from
-    ray_start still hit within range_min (or that enclose that start); rendered ones only get a warning."""
+    """Alpha 0 (ignored by mj_ray, the lidar plugin and rangefinders) on geoms welded to a lidar site that enclose
+    it or that its rays hit within range_min: the plugin casts from the site origin and excludes no body."""
     import math
     import mujoco
     import numpy as np
-    data, cleared, warned = mujoco.MjData(mj), set(), set()
+    data, cleared = mujoco.MjData(mj), set()
     mujoco.mj_forward(mj, data)
     hit = np.zeros(1, np.int32)
     for k in range(mj.nnumeric):
@@ -306,33 +328,29 @@ def _clear_lidar_dead_zone(root, mj):
         site = mujoco.mj_name2id(mj, mujoco.mjtObj.mjOBJ_SITE, name[:-5]) if name.endswith("_scan") else -1
         if site < 0:
             continue
-        a_min, a_max, inc, range_min, _, ray_start = mj.numeric_data[mj.numeric_adr[k]:mj.numeric_adr[k] + 6]
-        body = mj.site_bodyid[site]
-        origin, rot = data.site_xpos[site].copy(), data.site_xmat[site].reshape(3, 3)
-        for i in range(int((a_max - a_min) / inc) + 1):
-            a = a_min + i * inc
+        a_min, a_max, inc, range_min, _ = mj.numeric_data[mj.numeric_adr[k]:mj.numeric_adr[k] + 5]
+        weld = mj.body_weldid[mj.site_bodyid[site]]
+        pnt, rot = data.site_xpos[site].copy(), data.site_xmat[site].reshape(3, 3)
+        n = _lidar_rays(a_min, a_max, inc)
+        for i in range(n):
+            a = a_min + i * (a_max - a_min) / max(n - 1, 1)
             vec = rot @ np.array([math.cos(a), math.sin(a), 0.0])
-            pnt = origin + ray_start * vec
             while True:
-                r = mujoco.mj_ray(mj, data, pnt, vec, None, 1, body, hit)
+                r = mujoco.mj_ray(mj, data, pnt, vec, None, 1, -1, hit)
                 g = int(hit[0])
-                if g < 0 or mj.body_weldid[mj.geom_bodyid[g]] != mj.body_weldid[body]:
+                if g < 0 or mj.body_weldid[mj.geom_bodyid[g]] != weld:
                     break
                 if r >= range_min and _ray_geom(mj, data, g, pnt, -vec) < 0:
                     break
-                gname = mujoco.mj_id2name(mj, mujoco.mjtObj.mjOBJ_GEOM, g)
-                if mj.geom_group[g] < 3:
-                    if gname not in warned:
-                        print(f"  ! {name[:-5]}: rendered geom {gname} hit within range_min from ray_start, left visible")
-                        warned.add(gname)
-                    break
                 mj.geom_rgba[g, 3] = 0
-                cleared.add(gname)
+                cleared.add(g)
+    names = {mujoco.mj_id2name(mj, mujoco.mjtObj.mjOBJ_GEOM, g): int(mj.geom_group[g]) for g in cleared}
     for g in root.iter("geom"):
-        if g.get("name") in cleared:
+        if g.get("name") in names:
             rgba = g.get("rgba", "0.5 0.5 0.5 1").split()
             g.set("rgba", " ".join(rgba[:3] + ["0"]))
-            print(f"  ~ ray-transparent collider (hit within range_min from a lidar's ray_start): {g.get('name')}")
+            kind = "collider" if names[g.get("name")] >= 3 else "rendered geom, now invisible to cameras"
+            print(f"  ~ hidden for the lidar ({kind}): {g.get('name')}")
     return len(cleared)
 
 def usd_initial_pose(stage):
@@ -434,7 +452,7 @@ def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_pr
     sens = _add_sensors(root, stage, sensors)
     for old in root.findall("keyframe"):
         root.remove(old)
-    mj = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
+    mj = mujoco.MjModel.from_xml_string(strip_plugins(root))
     sens["ray_transparent"] = _clear_lidar_dead_zone(root, mj)
     qpos, ctrl = _home_key(mj, usd_initial_pose(stage) if initial_pose is None else initial_pose)
     key = ET.SubElement(ET.SubElement(root, "keyframe"), "key", name="home", qpos=_fmt(qpos))
@@ -442,8 +460,10 @@ def export_mjcf(usd_path, mjcf_path, *, initial_pose=None, ground=False, keep_pr
         key.set("ctrl", _fmt(ctrl))
     ET.indent(tree, space="  ")
     tree.write(mjcf_path)
-    mj = mujoco.MjModel.from_xml_path(mjcf_path)
+    mj = mujoco.MjModel.from_xml_string(strip_plugins(ET.parse(mjcf_path).getroot()))
     return dict(bodies=mj.nbody - 1, joints=mj.njnt, actuators=mj.nu, meshes=mj.nmesh, eq=mj.neq, geoms=mj.ngeom,
                 position=act["position"], velocity=act["velocity"], cameras=sens["cameras"],
-                lidars=sens["lidars"], rangefinders=sens["rangefinders"], ray_transparent=sens["ray_transparent"], colliders=stats["collision"], rgba_from_material=stats["material"], rgba_default=stats["default"],
+                lidars=sens["lidars"], lidar_plugins=sens["plugin_lidars"], rangefinders=sens["rangefinders"],
+                ray_transparent=sens["ray_transparent"], colliders=stats["collision"], rgba_from_material=stats["material"],
+                rgba_default=stats["default"],
                 size_mb=round(os.path.getsize(mjcf_path) / 1e6, 1))

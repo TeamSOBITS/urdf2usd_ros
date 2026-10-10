@@ -112,7 +112,7 @@ sensors:
     high_lod: false # Use high level of detail for visualization (3D Lidar only)
     topic: "lidar/scan"
     # topic_points: "lidar/scan/points" # RTX only: also publish a PointCloud2 (filled from the descriptor points_topic)
-    # mujoco: {angle_min: -2.25, angle_max: 2.25, angle_increment: 0.00872665, range_min: 0.02, range_max: 30.0, ray_start: 0.03, rangefinders: false} # MJCF scan site
+    # mujoco: {angle_min: -2.25, angle_max: 2.25, angle_increment: 0.00436332, range_min: 0.02, range_max: 30.0, update_rate: 10.0, rangefinders: false} # MJCF lidar plugin
 
   # IMU
   imu_sensor:
